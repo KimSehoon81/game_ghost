@@ -13,7 +13,7 @@ $v = static function (string $f): string {
     return $f . '?v=' . ($t ?: '1');
 };
 ?><!DOCTYPE html>
-<html lang="en">
+<html lang="ko">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
@@ -21,9 +21,12 @@ $v = static function (string $f): string {
 <meta name="theme-color" content="#050d14">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
-<title>Ghost-Tactics</title>
+<title>Ghost-Tactics 고스트 택틱스</title>
 <link rel="preload" as="image" href="sprites.png?v=<?= htmlspecialchars($assetVer, ENT_QUOTES, 'UTF-8') ?>">
 <style>
+  /* Korean pixel font: Galmuri subset (SIL OFL 1.1, see fonts/OFL.txt) */
+  @font-face { font-family: 'GTK9'; src: url('<?= htmlspecialchars($v('fonts/gtk9.woff2'), ENT_QUOTES, 'UTF-8') ?>') format('woff2'); font-display: swap; }
+  @font-face { font-family: 'GTK11'; src: url('<?= htmlspecialchars($v('fonts/gtk11.woff2'), ENT_QUOTES, 'UTF-8') ?>') format('woff2'); font-display: swap; }
   :root {
     --bg: #050d14;
     --ink: #f0f4f8;
@@ -41,7 +44,7 @@ $v = static function (string $f): string {
     -webkit-user-select: none; user-select: none;
     -webkit-touch-callout: none;
     -webkit-tap-highlight-color: transparent;
-    font-family: "Courier New", Courier, monospace;
+    font-family: 'GTK11', 'Malgun Gothic', 'Apple SD Gothic Neo', sans-serif;
   }
 
   /* Layout: ad bar on top (10% of the screen height), the game fills the rest. */
@@ -113,11 +116,11 @@ $v = static function (string $f): string {
     image-rendering: pixelated;
   }
   .modal h2 {
-    margin: 0 0 8px; font-size: 22px; letter-spacing: 2px;
+    margin: 0 0 8px; font-size: 24px; letter-spacing: 1px; font-weight: normal;
     color: var(--accent); text-shadow: 3px 3px 0 #000;
     animation: blink 0.8s steps(2) infinite;
   }
-  .modal p { margin: 6px 0; font-weight: bold; letter-spacing: 1px; }
+  .modal p { margin: 6px 0; word-break: keep-all; font-size: 20px; font-family: 'GTK9', 'Malgun Gothic', sans-serif; }
   @keyframes blink { 50% { color: var(--hot); } }
 
   .slots { display: flex; justify-content: center; gap: 14px; margin: 14px 0 10px; }
@@ -141,11 +144,11 @@ $v = static function (string $f): string {
     background: #000; color: var(--ink); border: 3px solid #555; padding: 4px;
     -webkit-user-select: text; user-select: text;
   }
-  .hint { font-size: 12px; opacity: .75; }
-  .err { min-height: 18px; color: var(--hot); font-weight: bold; font-size: 14px; margin: 6px 0; }
+  .hint { font-size: 12px; opacity: .8; }
+  .err { min-height: 18px; color: var(--hot); font-size: 12px; margin: 6px 0; }
   .btn {
     display: inline-block; min-width: 130px; margin: 6px 4px 0; padding: 10px 14px;
-    font: bold 18px "Courier New", monospace; letter-spacing: 2px;
+    font: 24px 'GTK11', 'Malgun Gothic', sans-serif; letter-spacing: 1px;
     background: var(--hot); color: #fff; border: 3px solid #000;
     box-shadow: inset -4px -4px 0 #7a1414, 4px 4px 0 #000;
     cursor: pointer; touch-action: manipulation;
@@ -155,13 +158,24 @@ $v = static function (string $f): string {
   .btn:disabled { opacity: .5; }
 
   table.rank { width: 100%; border-collapse: collapse; margin: 8px 0; font-weight: bold; }
-  table.rank th { color: var(--line); border-bottom: 3px solid var(--line); padding: 4px; font-size: 14px; }
-  table.rank td { padding: 5px 4px; font-size: 16px; border-bottom: 1px dashed #24405a; }
+  table.rank th { color: var(--line); border-bottom: 3px solid var(--line); padding: 4px; font-size: 12px; font-weight: normal; }
+  table.rank td { padding: 5px 4px; font-size: 20px; font-family: 'GTK9', 'Malgun Gothic', sans-serif; border-bottom: 1px dashed #24405a; }
   table.rank tr:nth-child(1) td { color: #f8d838; }
   table.rank tr:nth-child(2) td { color: #d8d8e8; }
   table.rank tr:nth-child(3) td { color: #f0a050; }
   table.rank tr.me td { background: #3a1420; animation: blink 0.6s steps(2) infinite; }
-  #rankStatus { font-size: 12px; opacity: .8; min-height: 16px; }
+  #rankStatus { font-size: 12px; opacity: .85; min-height: 16px; }
+
+  /* how to play */
+  .help { text-align: left; word-break: keep-all; }
+  .help h2 { animation: none; color: var(--accent); }
+  .help h3 { margin: 12px 0 6px; font-size: 12px; color: var(--accent); font-weight: normal; letter-spacing: 1px; }
+  .help ol, .help ul { margin: 0; padding-left: 26px; }
+  .help li { margin: 4px 0; font-size: 20px; line-height: 1.25; font-family: 'GTK9', 'Malgun Gothic', sans-serif; }
+  .help b { color: var(--accent); font-weight: normal; }
+  .help .note { font-size: 12px; opacity: .8; margin: 8px 0 0; }
+  .help .btn { display: block; margin: 14px auto 0; }
+  @media (max-width: 480px) { .modal { padding: 12px 10px; } .help ol, .help ul { padding-left: 22px; } }
 
   #rotateHint {
     position: fixed; left: 0; right: 0; bottom: 8px; text-align: center;
@@ -187,39 +201,67 @@ $v = static function (string $f): string {
     <canvas id="screen" width="640" height="480" aria-label="Ghost-Tactics game screen"></canvas>
   </div>
 </div>
-<div id="rotateHint">ROTATE YOUR DEVICE FOR A BIGGER SCREEN</div>
+<div id="rotateHint">기기를 가로로 돌리면 더 크게 보여요</div>
 
 <div id="overlay" class="hidden">
   <!-- High-score initial entry -->
   <div id="entryModal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="entryTitle">
-    <h2 id="entryTitle">NEW HIGH SCORE!</h2>
-    <p>LEVEL REACHED: <span id="entryLevel">001</span></p>
-    <p>ENTER YOUR INITIALS</p>
+    <h2 id="entryTitle">신기록!</h2>
+    <p>도달 레벨: <span id="entryLevel">001</span></p>
+    <p>이니셜 3글자 (영문)</p>
     <div class="slots">
-      <div class="slot" data-i="0"><button type="button" class="up" aria-label="next letter">&#9650;</button><div class="ch">A</div><button type="button" class="down" aria-label="previous letter">&#9660;</button></div>
-      <div class="slot" data-i="1"><button type="button" class="up" aria-label="next letter">&#9650;</button><div class="ch">A</div><button type="button" class="down" aria-label="previous letter">&#9660;</button></div>
-      <div class="slot" data-i="2"><button type="button" class="up" aria-label="next letter">&#9650;</button><div class="ch">A</div><button type="button" class="down" aria-label="previous letter">&#9660;</button></div>
+      <div class="slot" data-i="0"><button type="button" class="up" aria-label="다음 글자">&#9650;</button><div class="ch">A</div><button type="button" class="down" aria-label="이전 글자">&#9660;</button></div>
+      <div class="slot" data-i="1"><button type="button" class="up" aria-label="다음 글자">&#9650;</button><div class="ch">A</div><button type="button" class="down" aria-label="이전 글자">&#9660;</button></div>
+      <div class="slot" data-i="2"><button type="button" class="up" aria-label="다음 글자">&#9650;</button><div class="ch">A</div><button type="button" class="down" aria-label="이전 글자">&#9660;</button></div>
     </div>
     <input id="entryInput" type="text" maxlength="3" inputmode="text" autocomplete="off"
-           autocapitalize="characters" spellcheck="false" pattern="[A-Z]{3}" aria-label="Initials (3 letters A-Z)">
-    <div class="hint">SPIN THE SLOTS OR TYPE A-Z &middot; ENTER = OK</div>
+           autocapitalize="characters" spellcheck="false" pattern="[A-Z]{3}" aria-label="이니셜 (영문 3글자)">
+    <div class="hint">▲▼로 고르거나 키보드로 입력 &middot; Enter = 등록</div>
     <div class="err" id="entryErr"></div>
-    <button type="button" class="btn" id="entrySubmit">OK!</button>
+    <button type="button" class="btn" id="entrySubmit">등록!</button>
   </div>
 
   <!-- Leaderboard -->
   <div id="rankModal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="rankTitle">
-    <h2 id="rankTitle">TOP 10 GHOST MASTERS</h2>
+    <h2 id="rankTitle">유령 마스터 TOP 10</h2>
     <table class="rank">
-      <thead><tr><th>#</th><th>NAME</th><th>LEVEL</th><th>DATE</th></tr></thead>
-      <tbody id="rankBody"><tr><td colspan="4">LOADING...</td></tr></tbody>
+      <thead><tr><th>순위</th><th>이름</th><th>레벨</th><th>날짜</th></tr></thead>
+      <tbody id="rankBody"><tr><td colspan="4">불러오는 중…</td></tr></tbody>
     </table>
     <div id="rankStatus"></div>
-    <button type="button" class="btn alt" id="rankClose">CLOSE</button>
+    <button type="button" class="btn alt" id="rankClose">닫기</button>
+  </div>
+
+  <!-- How to play -->
+  <div id="helpModal" class="modal help hidden" role="dialog" aria-modal="true" aria-labelledby="helpTitle">
+    <h2 id="helpTitle">게임 방법</h2>
+    <h3>▶ 플레이</h3>
+    <ol>
+      <li><b>카드</b>를 눌러 유령 구매</li>
+      <li>유령을 <b>왼쪽 3줄</b>에 배치<br>(끌어다 놓거나, 누르고 칸 누르기)</li>
+      <li><b>공격 범위</b>가 옅게 보여요<br>주황 = 근접 · 파랑 = 원거리</li>
+      <li><b>[전투 시작!]</b> → 자동 전투</li>
+    </ol>
+    <h3>▶ 레벨업 하는 법</h3>
+    <ul>
+      <li><b>이기면 다음 레벨!</b> 10레벨마다 보스</li>
+      <li>레벨이 오르면 <b>배치 인원</b> 증가</li>
+      <li>같은 유령 <b>3마리 = ★ 강화</b></li>
+      <li>서양·동양 2종/4종 = <b>시너지</b></li>
+      <li><b>제단</b> = 모든 유령 영구 강화</li>
+      <li>지면 목숨 -1 (0이 되면 끝)</li>
+    </ul>
+    <h3>▶ 저장</h3>
+    <ul>
+      <li><b>자동 저장</b>: 꺼도 [이어하기]로 계속</li>
+      <li>전투 중에 꺼지면 그 레벨 <b>준비 화면부터</b><br>(같은 레벨에서 또 끄면 목숨 -1)</li>
+    </ul>
+    <p class="note">키보드: F 전투 · R 새로고침 · A 제단 · 1~5 구매 · S 판매 · M 소리 · H 도움말</p>
+    <button type="button" class="btn" id="helpClose">알겠어요!</button>
   </div>
 </div>
 
-<noscript>Ghost-Tactics needs JavaScript enabled.</noscript>
+<noscript>자바스크립트를 켜야 플레이할 수 있어요.</noscript>
 
 <script>try { (window.adsbygoogle = window.adsbygoogle || []).push({}); } catch (e) { /* ad blocked */ }</script>
 <script>window.GT_ASSET_VER = <?= json_encode($assetVer) ?>;</script>

@@ -31,6 +31,7 @@
   const BOX_TIMER = { x: 492, y: 424, w: 140, h: 52 };
   const BOX_LOG = { x: 8, y: 372, w: 478, h: 104 };
   const BTN_SOUND = { x: 596, y: 3, w: 40, h: 22 };
+  const BTN_HELP = { x: 552, y: 3, w: 30, h: 22 };
   const HIT_SOUND = { x: 586, y: 0, w: 54, h: 30 };
   const SYN = { x: 2, y: 116, w: 76, h: 192 };
   const INFO = { x: 562, y: 116, w: 76, h: 192 };
@@ -219,21 +220,117 @@
     return c;
   }
 
+  // ---- Korean text: subset of the Galmuri pixel font (fonts/gtk9.woff2 10px, fonts/gtk11.woff2 12px).
+  // Any string with a non-ASCII character goes through here; the glyph band is centred on
+  // the 5x7 font's 7*scale box, so every layout written for the bitmap font stays aligned.
+  const NON_ASCII = /[^\x00-\x7e·]/;
+  const KO_SIZE = { 1: ['GTK9', 10], 2: ['GTK11', 12], 3: ['GTK9', 20], 4: ['GTK11', 24] };
+  function koFont(scale) {
+    const s = KO_SIZE[scale] || ['GTK11', 12 * Math.max(1, Math.round(scale / 2))];
+    return { css: s[1] + 'px ' + s[0] + ', "Malgun Gothic", "Apple SD Gothic Neo", sans-serif', px: s[1] };
+  }
+  const mctx = document.createElement('canvas').getContext('2d');
+  const koMetric = new Map();
+  function koMetrics(scale) {
+    let m = koMetric.get(scale);
+    if (m) return m;
+    const f = koFont(scale);
+    mctx.font = f.css;
+    const t = mctx.measureText('가힣Ag');
+    m = { f, asc: Math.ceil(t.actualBoundingBoxAscent || f.px * 0.9), desc: Math.ceil(t.actualBoundingBoxDescent || f.px * 0.2) };
+    koMetric.set(scale, m);
+    return m;
+  }
+  function koWidth(str, scale) { mctx.font = koFont(scale).css; return Math.ceil(mctx.measureText(str).width); }
+  function textWidth(str, scale) {
+    str = String(str); scale = scale || 1;
+    return NON_ASCII.test(str) ? koWidth(str, scale) : str.length * 6 * scale - scale;
+  }
+  function koImage(str, color, scale, shadow) {
+    const m = koMetrics(scale), sh = shadow ? Math.max(1, Math.round(m.f.px / 10)) : 0;
+    const c = document.createElement('canvas');
+    c.width = Math.max(1, koWidth(str, scale) + sh); c.height = m.asc + m.desc + sh;
+    const g = c.getContext('2d');
+    g.font = m.f.css;
+    if (sh) { g.fillStyle = '#000'; g.fillText(str, sh, m.asc + sh); }
+    g.fillStyle = color; g.fillText(str, 0, m.asc);
+    return c;
+  }
+  // outlined two-tone Korean (callouts, banners), cached per string
+  const koStyled = new Map();
+  function koStyledImage(str, st, scale) {
+    if (st.id == null) st.id = ++styleSeq;
+    const key = str + '\u0003' + st.id + 'x' + scale;
+    let c = koStyled.get(key);
+    if (c) return c;
+    if (koStyled.size > 200) koStyled.clear();
+    const m = koMetrics(scale), r = Math.max(1, Math.round(m.f.px / 10));
+    c = document.createElement('canvas');
+    c.width = koWidth(str, scale) + 2 * r; c.height = m.asc + m.desc + 2 * r;
+    const g = c.getContext('2d');
+    g.font = m.f.css;
+    g.fillStyle = st.out;
+    for (let dy = -r; dy <= r; dy += r) for (let dx = -r; dx <= r; dx += r) g.fillText(str, r + dx, r + m.asc + dy);
+    const grad = g.createLinearGradient(0, r, 0, r + m.asc + m.desc);
+    const k = Math.min(0.95, (st.split || 2) / 7);
+    grad.addColorStop(0, st.top); grad.addColorStop(k, st.top); grad.addColorStop(Math.min(1, k + 0.01), st.bot); grad.addColorStop(1, st.bot);
+    g.fillStyle = grad;
+    g.fillText(str, r, r + m.asc);
+    koStyled.set(key, c);
+    return c;
+  }
+  // the fonts arrive asynchronously: re-render cached strings once they are in
+  if (document.fonts && document.fonts.load) {
+    Promise.all([document.fonts.load('10px GTK9', '가'), document.fonts.load('12px GTK11', '가')])
+      .then(() => { textCache.clear(); koStyled.clear(); koMetric.clear(); }).catch(() => {});
+  }
+
   function text(str, x, y, color, scale, align, shadow) {
-    str = String(str).toUpperCase();
+    str = String(str);
     if (!str.length) return;
     scale = scale || 1;
-    const img = textImage(str, color || '#fff', scale, shadow !== false);
-    const w = str.length * 6 * scale - scale;
+    const ko = NON_ASCII.test(str);
+    if (!ko) str = str.toUpperCase();
+    let img = null, w, dy = y;
+    if (ko) {
+      const key = str + '\u0004' + (color || '#fff') + scale + (shadow !== false ? 's' : '');
+      img = textCache.get(key);
+      if (!img) { if (textCache.size > 600) textCache.clear(); img = koImage(str, color || '#fff', scale, shadow !== false); textCache.set(key, img); }
+      const m = koMetrics(scale);
+      w = img.width - (shadow !== false ? Math.max(1, Math.round(m.f.px / 10)) : 0);
+      dy = y + Math.round((7 * scale - (m.asc + m.desc)) / 2);
+    } else {
+      img = textImage(str, color || '#fff', scale, shadow !== false);
+      w = str.length * 6 * scale - scale;
+    }
     let dx = x;
     if (align === 'center') dx = x - Math.floor(w / 2);
     else if (align === 'right') dx = x - w;
-    ctx.drawImage(img, Math.round(dx), Math.round(y));
+    ctx.drawImage(img, Math.round(dx), Math.round(dy));
+  }
+
+  // longest prefix of str that fits in maxPx (with an ellipsis when cut)
+  function fitText(str, maxPx, scale) {
+    str = String(str);
+    if (textWidth(str, scale) <= maxPx) return str;
+    let s = str;
+    while (s.length > 1 && textWidth(s + '…', scale) > maxPx) s = s.slice(0, -1);
+    return s + '…';
   }
 
   // Damage numbers / banners: per-glyph blits (high churn -> no per-string canvases)
   function textStyled(str, x, y, st, scale, align, k) {
-    str = String(str).toUpperCase();
+    str = String(str);
+    if (NON_ASCII.test(str)) {
+      const img = koStyledImage(str, st, scale);
+      const sc = k || 1, dw = Math.round(img.width * sc), dh = Math.round(img.height * sc);
+      let dx = x - dw / 2;
+      if (align === 'left') dx = x;
+      else if (align === 'right') dx = x - dw;
+      ctx.drawImage(img, Math.round(dx), Math.round(y - dh / 2), dw, dh);
+      return;
+    }
+    str = str.toUpperCase();
     const n = str.length;
     const sc = k || 1;
     const adv = 6 * scale * sc, gw = 7 * scale * sc, gh = 9 * scale * sc;
@@ -248,14 +345,23 @@
     }
   }
 
-  function wrap(str, max) {
-    const words = String(str).toUpperCase().split(/\s+/);
+  // word wrap to `max` bitmap characters (6 px each at scale 1); Korean wraps by pixel width
+  function wrap(str, max, scale) {
+    str = String(str); scale = scale || 1;
+    const maxPx = max * 6 * scale;
+    const fits = s => textWidth(s, scale) <= maxPx;
+    const words = (NON_ASCII.test(str) ? str : str.toUpperCase()).split(/\s+/).filter(Boolean);
     const lines = [];
     let cur = '';
     words.forEach(w => {
       if (!cur.length) cur = w;
-      else if ((cur + ' ' + w).length <= max) cur += ' ' + w;
+      else if (fits(cur + ' ' + w)) cur += ' ' + w;
       else { lines.push(cur); cur = w; }
+      while (!fits(cur) && cur.length > 1) {   // a single word wider than the line
+        let i = cur.length - 1;
+        while (i > 1 && !fits(cur.slice(0, i))) i--;
+        lines.push(cur.slice(0, i)); cur = cur.slice(i);
+      }
     });
     if (cur) lines.push(cur);
     return lines;
@@ -345,26 +451,26 @@
   //  ROSTER  (PRD: 10 ghosts, named skills)
   // =====================================================================
   const GHOSTS = [
-    { id: 'dracula', name: 'Dracula', origin: 'W', cls: 'melee', role: 'Melee Lifesteal', cost: 3, hp: 640, atk: 52, range: 1, aspd: 0.9, move: 0.42, mp: 80, lifesteal: 0.2,
-      color: '#e03030', skill: 'Blood Feast', desc: 'Bite for 250% ATK, heal all damage dealt. Passive 20% lifesteal.' },
-    { id: 'frank', name: 'Frankenstein', origin: 'W', cls: 'tank', role: 'Tank', cost: 2, hp: 980, atk: 38, range: 1, aspd: 0.6, move: 0.55, mp: 100,
-      color: '#60e0f0', skill: 'Electric Stun', desc: 'Shock target and adjacent foes: 150% ATK, stun 1.5s.' },
-    { id: 'succubus', name: 'Succubus', origin: 'W', cls: 'ranged', role: 'Ranged', cost: 3, hp: 480, atk: 46, range: 3, aspd: 0.85, move: 0.45, mp: 90, proj: 'fx_charm1',
-      color: '#ff70d8', skill: 'Charm', desc: 'Charm strongest foe in range 3s. It attacks its own allies.' },
-    { id: 'mummy', name: 'Mummy', origin: 'W', cls: 'tank', role: 'Sub-Tank', cost: 1, hp: 820, atk: 40, range: 1, aspd: 0.7, move: 0.55, mp: 90,
-      color: '#e8d8a8', skill: 'Bandage Wrap', desc: 'Wrap the highest-HP foe: 120% ATK, stun 2.5s.' },
-    { id: 'werewolf', name: 'Werewolf', origin: 'W', cls: 'melee', role: 'Melee DPS', cost: 2, hp: 600, atk: 58, range: 1, aspd: 1.0, move: 0.32, mp: 70,
-      color: '#f08828', skill: 'Blood Rage', desc: '+100% attack speed for 4s and heal 15% max HP.' },
-    { id: 'gumiho', name: 'Gumiho', origin: 'E', cls: 'ranged', role: 'Ranged DPS', cost: 3, hp: 450, atk: 56, range: 3, aspd: 0.8, move: 0.45, mp: 80, proj: 'gumiho_proj',
-      color: '#ffb030', skill: 'Fox Orb', desc: 'Piercing orb: 200% ATK to every foe in its path.' },
-    { id: 'jiangshi', name: 'Jiangshi', origin: 'E', cls: 'tank', role: 'Melee Tank', cost: 1, hp: 860, atk: 36, range: 1, aspd: 0.7, move: 0.6, mp: 90,
-      color: '#f8d838', skill: 'Steel Talisman', desc: 'Shield self 50% max HP, adjacent allies 20%, for 5s.' },
-    { id: 'palcheok', name: 'Palcheok-Gwin', origin: 'E', cls: 'melee', role: 'Melee Disrupter', cost: 2, hp: 720, atk: 44, range: 1, aspd: 0.8, move: 0.5, mp: 90,
-      color: '#9a7aff', skill: 'Po-Po-Po', desc: 'Bind foes around target 3s (no move/skill), DOT 80% ATK/s 4s.' },
-    { id: 'maiden', name: 'Maiden-Ghost', origin: 'E', cls: 'ranged', role: 'Ranged Assassin', cost: 3, hp: 430, atk: 50, range: 3, aspd: 0.85, move: 0.45, mp: 85, proj: 'maiden_proj',
-      color: '#a0c0ff', skill: 'Wailing Curse', desc: 'Lowest-HP foe anywhere: 300% ATK, cursed +25% dmg taken 4s.' },
-    { id: 'reaper', name: 'Grim Reaper', origin: 'E', cls: 'ranged', role: 'Ranged Finisher', cost: 4, hp: 520, atk: 60, range: 3, aspd: 0.75, move: 0.45, mp: 100, proj: 'reaper_proj',
-      color: '#b080ff', skill: 'Death Note', desc: 'Execute a foe under 15% HP. Else 220% ATK to lowest HP% foe.' }
+    { id: 'dracula', name: '드라큘라', short: '드라큘라', origin: 'W', cls: 'melee', role: '근접 흡혈', cost: 3, hp: 640, atk: 52, range: 1, aspd: 0.9, move: 0.42, mp: 80, lifesteal: 0.2,
+      color: '#e03030', skill: '피의 만찬', desc: '공격력 250% 물기. 준 피해만큼 회복 (기본 흡혈 20%)', lines: ['피를 다오!', '맛있겠군…'] },
+    { id: 'frank', name: '프랑켄슈타인', short: '프랑켄', origin: 'W', cls: 'tank', role: '탱커', cost: 2, hp: 980, atk: 38, range: 1, aspd: 0.6, move: 0.55, mp: 100,
+      color: '#60e0f0', skill: '전기 충격', desc: '대상과 주변 적에게 150% 피해 + 1.5초 기절', lines: ['찌릿찌릿!', '으어어어!'] },
+    { id: 'succubus', name: '서큐버스', short: '서큐버스', origin: 'W', cls: 'ranged', role: '원거리', cost: 3, hp: 480, atk: 46, range: 3, aspd: 0.85, move: 0.45, mp: 90, proj: 'fx_charm1',
+      color: '#ff70d8', skill: '매혹', desc: '사거리 안 가장 강한 적을 3초 매혹. 제 편을 공격해요', lines: ['내 눈을 봐♥', '이리 와~'] },
+    { id: 'mummy', name: '미라', short: '미라', origin: 'W', cls: 'tank', role: '서브 탱커', cost: 1, hp: 820, atk: 40, range: 1, aspd: 0.7, move: 0.55, mp: 90,
+      color: '#e8d8a8', skill: '붕대 감기', desc: '체력이 가장 많은 적에게 120% 피해 + 2.5초 기절', lines: ['꽁꽁 묶어주마!', '붕대 발사!'] },
+    { id: 'werewolf', name: '늑대인간', short: '늑대인간', origin: 'W', cls: 'melee', role: '근접 딜러', cost: 2, hp: 600, atk: 58, range: 1, aspd: 1.0, move: 0.32, mp: 70,
+      color: '#f08828', skill: '피의 광란', desc: '4초간 공격 속도 2배 + 체력 15% 회복', lines: ['아우우우~!', '피가 끓는다!'] },
+    { id: 'gumiho', name: '구미호', short: '구미호', origin: 'E', cls: 'ranged', role: '원거리 딜러', cost: 3, hp: 450, atk: 56, range: 3, aspd: 0.8, move: 0.45, mp: 80, proj: 'gumiho_proj',
+      color: '#ffb030', skill: '여우 구슬', desc: '관통하는 구슬. 지나가는 모든 적에게 200% 피해', lines: ['여우 구슬!', '홀려 주마~'] },
+    { id: 'jiangshi', name: '강시', short: '강시', origin: 'E', cls: 'tank', role: '근접 탱커', cost: 1, hp: 860, atk: 36, range: 1, aspd: 0.7, move: 0.6, mp: 90,
+      color: '#f8d838', skill: '강철 부적', desc: '5초간 보호막: 자신 체력 50%, 주변 아군 20%', lines: ['부적 발동!', '콩! 콩!'] },
+    { id: 'palcheok', name: '팔척귀신', short: '팔척귀신', origin: 'E', cls: 'melee', role: '근접 방해', cost: 2, hp: 720, atk: 44, range: 1, aspd: 0.8, move: 0.5, mp: 90,
+      color: '#9a7aff', skill: '포포포', desc: '대상 주변 적을 3초 속박 + 4초간 지속 피해', lines: ['포… 포… 포…', '어딜 도망가?'] },
+    { id: 'maiden', name: '처녀귀신', short: '처녀귀신', origin: 'E', cls: 'ranged', role: '원거리 암살', cost: 3, hp: 430, atk: 50, range: 3, aspd: 0.85, move: 0.45, mp: 85, proj: 'maiden_proj',
+      color: '#a0c0ff', skill: '원한의 곡소리', desc: '체력이 가장 낮은 적에게 300% 피해 + 4초간 받는 피해 25%↑', lines: ['원통하다…', '흐흐흐흑…'] },
+    { id: 'reaper', name: '저승사자', short: '저승사자', origin: 'E', cls: 'ranged', role: '원거리 마무리', cost: 4, hp: 520, atk: 60, range: 3, aspd: 0.75, move: 0.45, mp: 100, proj: 'reaper_proj',
+      color: '#b080ff', skill: '명부 집행', desc: '체력 15% 미만 적은 즉사. 아니면 체력 비율이 가장 낮은 적에게 220%', lines: ['명부에 올랐다.', '때가 되었다.'] }
   ];
   const GMAP = {};
   GHOSTS.forEach(g => { GMAP[g.id] = g; });
@@ -373,30 +479,30 @@
   // Enemy monster skins (sheet ENEMIES row). Enemies are possessed by ghost spirits:
   // they fight with the spirit's PRD skill, wearing the zone's monster skin.
   const MONSTERS = {
-    skeleton: { name: 'Skeleton', face: 1 }, zombie: { name: 'Zombie', face: 1 }, ghost: { name: 'Ghost', face: 0, float: 4 },
-    slime: { name: 'Slime', face: 0, squish: true }, bat: { name: 'Bat', face: 0, float: 5 }, spider: { name: 'Spider', face: 0 },
-    wolf: { name: 'Wolf', face: 1 }, ogre: { name: 'Ogre', face: 0 }, demon: { name: 'Demon', face: 0 }, dragon: { name: 'Dragon', face: -1 }
+    skeleton: { name: '해골', face: 1 }, zombie: { name: '좀비', face: 1 }, ghost: { name: '유령', face: 0, float: 4 },
+    slime: { name: '슬라임', face: 0, squish: true }, bat: { name: '박쥐', face: 0, float: 5 }, spider: { name: '거미', face: 0 },
+    wolf: { name: '늑대', face: 1 }, ogre: { name: '오우거', face: 0 }, demon: { name: '악마', face: 0 }, dragon: { name: '드래곤', face: -1 }
   };
 
   // =====================================================================
   //  STAGES (sheet: GRAVEYARD 1~, CASTLE 50~, FOREST 100~, ORIENTAL 200~, HELL 500~)
   // =====================================================================
   const ZONES = [
-    { id: 'graveyard', name: 'GRAVEYARD', from: 1, bg: 'bg_graveyard', tile: 'tl_stone', wash: 'rgba(30,60,140,0.22)',
+    { id: 'graveyard', name: '묘지', from: 1, bg: 'bg_graveyard', tile: 'tl_stone', wash: 'rgba(30,60,140,0.22)',
       props: [['pr_deadtree', 40, 116, 1], ['pr_tomb', 604, 114, 1], ['ob_crow', 46, 62, 1]], amb: 'fog',
-      skins: { tank: 'zombie', melee: 'skeleton', ranged: 'ghost', boss: 'ogre', bossName: 'GRAVE OGRE' } },
-    { id: 'castle', name: 'CASTLE', from: 50, bg: 'bg_castle', tile: 'tl_brick', wash: 'rgba(58,32,96,0.30)',
+      skins: { tank: 'zombie', melee: 'skeleton', ranged: 'ghost', boss: 'ogre', bossName: '무덤 오우거' } },
+    { id: 'castle', name: '고성', from: 50, bg: 'bg_castle', tile: 'tl_brick', wash: 'rgba(58,32,96,0.30)',
       props: [['pr_pillar', 30, 116, 1], ['pr_pillar', 610, 116, 1]], amb: 'bats',
-      skins: { tank: 'skeleton', melee: 'wolf', ranged: 'bat', boss: 'demon', bossName: 'CASTLE LORD' } },
-    { id: 'forest', name: 'FOREST', from: 100, bg: 'bg_forest', tile: 'tl_grass', wash: 'rgba(10,40,20,0.20)',
+      skins: { tank: 'skeleton', melee: 'wolf', ranged: 'bat', boss: 'demon', bossName: '고성의 군주' } },
+    { id: 'forest', name: '숲', from: 100, bg: 'bg_forest', tile: 'tl_grass', wash: 'rgba(10,40,20,0.20)',
       props: [['ob_tree', 40, 116, 1], ['ob_bush', 600, 114, 1], ['ob_rabbit', 618, 114, 1]], amb: 'fireflies',
-      skins: { tank: 'slime', melee: 'wolf', ranged: 'spider', boss: 'ogre', bossName: 'FOREST TROLL' } },
-    { id: 'oriental', name: 'ORIENTAL', from: 200, bg: 'bg_oriental', tile: 'tl_sand', wash: 'rgba(20,30,90,0.26)',
+      skins: { tank: 'slime', melee: 'wolf', ranged: 'spider', boss: 'ogre', bossName: '숲의 트롤' } },
+    { id: 'oriental', name: '동양 사원', from: 200, bg: 'bg_oriental', tile: 'tl_sand', wash: 'rgba(20,30,90,0.26)',
       props: [['pr_torii', 40, 114, 1], ['pr_lantern', 604, 112, 1]], amb: 'petals',
-      skins: { tank: 'zombie', melee: 'ogre', ranged: 'ghost', boss: 'dragon', bossName: 'IMUGI' } },
-    { id: 'hell', name: 'HELL', from: 500, bg: 'bg_hell', tile: 'tl_dark', wash: 'rgba(90,10,10,0.24)',
+      skins: { tank: 'zombie', melee: 'ogre', ranged: 'ghost', boss: 'dragon', bossName: '이무기' } },
+    { id: 'hell', name: '지옥', from: 500, bg: 'bg_hell', tile: 'tl_dark', wash: 'rgba(90,10,10,0.24)',
       props: [['pr_pillar', 30, 116, 1], ['pr_pillar', 610, 116, 1]], amb: 'embers',
-      skins: { tank: 'ogre', melee: 'demon', ranged: 'bat', boss: 'dragon', bossName: 'HELL WYRM' } }
+      skins: { tank: 'ogre', melee: 'demon', ranged: 'bat', boss: 'dragon', bossName: '지옥룡' } }
   ];
   const zoneOf = L => (L >= 500 ? ZONES[4] : L >= 200 ? ZONES[3] : L >= 100 ? ZONES[2] : L >= 50 ? ZONES[1] : ZONES[0]);
 
@@ -481,7 +587,8 @@
     sel: null, drag: null, hover: null, mouse: { x: -1, y: -1 }, touch: false,
     msg: '', msgT: 0, modal: false, final: null, gameoverT: 0, hasSave: false,
     wipe: null, zoneCard: null, coins: [], goldShown: START_GOLD, hudPulse: 0,
-    skillCount: {}
+    skillCount: {},
+    bubbles: [], cutin: null, cutSeen: {}, cutCd: 0, saveT: 0, quits: 0
   };
   S.best = parseInt(store.get('gt_best') || '0', 10) || 0;
   const PID = playerId();
@@ -616,11 +723,11 @@
     const id = S.shop[i];
     if (!id) return;
     const d = GMAP[id];
-    if (S.gold < d.cost) { flash('NOT ENOUGH GOLD'); Sound.play('error'); return; }
+    if (S.gold < d.cost) { flash('골드가 부족해요'); Sound.play('error'); return; }
     const willMerge = countCopies(id, 1) >= 2;
     const slot = freeSlot();
     const canBoard = boardCount() < playerCap(S.level);
-    if (slot < 0 && !willMerge && !canBoard) { flash('BENCH FULL'); Sound.play('error'); return; }
+    if (slot < 0 && !willMerge && !canBoard) { flash('대기석이 가득 찼어요'); Sound.play('error'); return; }
     S.gold -= d.cost;
     S.shop[i] = null;
     const u = { uid: uidSeq++, id, star: 1, loc: 'bench', slot: Math.max(0, slot), r: 0, c: 0, pop: 0 };
@@ -675,12 +782,12 @@
     if (S.sel && S.sel.u === u) S.sel = null;
     if (S.drag && S.drag.u === u) S.drag = null;
     Sound.play('sell');
-    flash('SOLD +' + sellValue(u) + 'G');
+    flash('판매 +' + sellValue(u) + '골드');
     saveLocalSoon();
   }
 
   function reroll() {
-    if (S.gold < REROLL_COST) { flash('NOT ENOUGH GOLD'); Sound.play('error'); return; }
+    if (S.gold < REROLL_COST) { flash('골드가 부족해요'); Sound.play('error'); return; }
     S.gold -= REROLL_COST;
     refreshShop();
     Sound.play('spin');
@@ -689,12 +796,12 @@
 
   function altar() {
     const cost = altarCost();
-    if (S.gold < cost) { flash('NOT ENOUGH GOLD'); Sound.play('error'); return; }
+    if (S.gold < cost) { flash('골드가 부족해요'); Sound.play('error'); return; }
     S.gold -= cost;
     S.power++;
     Sound.play('power');
     saveLocalSoon();
-    flash('ALTAR LV ' + S.power + ': ALL GHOSTS +6%');
+    flash('제단 ' + S.power + '단계: 모든 유령 +6%');
     S.roster.forEach(u => {
       if (u.loc !== 'board') return;
       const p = cellCenter(u.r, u.c);
@@ -708,11 +815,11 @@
     if (S.roster.indexOf(u) < 0) return false;    // stale reference (sold / merged during the drag)
     const cell = cellPoint ? dropCell(cellPoint) : cellAt(p);
     if (cell) {
-      if (cell.c >= PCOLS) { flash('DEPLOY ON YOUR SIDE (LEFT)'); Sound.play('error'); return false; }
+      if (cell.c >= PCOLS) { flash('왼쪽 내 진영에 배치하세요'); Sound.play('error'); return false; }
       const other = rosterAtCell(cell.r, cell.c);
       if (other === u) return false;
       if (u.loc === 'bench' && !other && boardCount() >= playerCap(S.level)) {
-        flash('UNIT CAP ' + playerCap(S.level) + ' (RISES WITH LEVEL)'); Sound.play('error'); return false;
+        flash('지금은 ' + playerCap(S.level) + '명까지 (레벨이 오르면 늘어요)'); Sound.play('error'); return false;
       }
       if (other) {
         if (u.loc === 'bench') { other.loc = 'bench'; other.slot = u.slot; }
@@ -747,16 +854,17 @@
   // =====================================================================
   function newGame() {
     S.level = 1; S.gold = START_GOLD; S.goldShown = START_GOLD; S.lives = START_LIVES; S.power = 0;
-    S.roster = []; S.sel = null; S.drag = null;
+    S.roster = []; S.sel = null; S.drag = null; S.quits = 0;
     refreshShop();
     API.post('new_game').catch(() => {});
     enterPrep(true);
     showZoneCard();
+    if (!store.get('gt_help_seen')) { store.set('gt_help_seen', '1'); setTimeout(() => { if (S.scene === 'prep' && !S.modal) UI.showHelp(); }, 1800); }
   }
 
   function serialize(over) {
     return Object.assign({
-      v: 2, t: Date.now(), level: S.level, gold: S.gold, lives: S.lives, power: S.power,
+      v: 2, t: Date.now(), level: S.level, gold: S.gold, lives: S.lives, power: S.power, quits: S.quits | 0,
       roster: S.roster.map(u => ({ id: u.id, star: u.star, loc: u.loc, r: u.r, c: u.c, slot: u.slot })),
       shop: S.shop
     }, over || {});
@@ -771,6 +879,7 @@
     S.goldShown = S.gold;
     S.lives = clamp(parseInt(st.lives, 10) || 1, 1, MAX_LIVES);
     S.power = Math.max(0, parseInt(st.power, 10) || 0);
+    S.quits = Math.max(0, parseInt(st.quits, 10) || 0);
     S.roster = [];
     const taken = {};
     (Array.isArray(st.roster) ? st.roster : []).forEach(x => {
@@ -796,7 +905,8 @@
   // write a run snapshot locally and to the server
   function persist(st) {
     store.set('gt_save', JSON.stringify(st));
-    S.hasSave = true;
+    S.hasSave = true; savedCache = null;
+    if (!st.battle) S.saveT = 1.6;
     API.post('save_progress', { player_id: PID, level: st.level, gold: st.gold, lives: st.lives, power: st.power, state: st }).catch(() => {});
   }
   function saveProgress() { persist(serialize()); }
@@ -809,9 +919,18 @@
     localSaveTimer = setTimeout(() => { if (S.scene === 'prep') { store.set('gt_save', JSON.stringify(serialize())); S.hasSave = true; } }, 250);
   }
 
+  // level / lives of the saved run, for the title's CONTINUE button
+  let savedCache = null;
+  function savedRun() {
+    if (savedCache === null) {
+      try { const st = JSON.parse(store.get('gt_save') || 'null'); savedCache = st && st.level ? { level: st.level | 0, lives: st.lives | 0 } : false; } catch (e) { savedCache = false; }
+    }
+    return savedCache || null;
+  }
+
   function clearProgress() {
     store.del('gt_save');
-    S.hasSave = false;
+    S.hasSave = false; savedCache = null;
     API.post('clear_progress', { player_id: PID }).catch(() => {});
   }
 
@@ -826,14 +945,25 @@
     try { local = JSON.parse(store.get('gt_save') || 'null'); } catch (e) { local = null; }
     const rank = s => (s && typeof s === 'object' ? (parseInt(s.level, 10) || 0) * 1e13 + (Number(s.t) || 0) : -1);
     const st = rank(local) > rank(server) ? local : server;
-    if (!restore(st)) { flash('NO SAVE FOUND'); Sound.play('error'); S.hasSave = false; return; }
+    if (!restore(st)) { flash('저장된 게임이 없어요'); Sound.play('error'); S.hasSave = false; return; }
     S.sel = null;
+    if (st.battle) {
+      // the page closed during a battle: back to that level's prep screen (pre-battle team)
+      S.quits++;
+      if (S.quits >= 2) S.lives--;
+      if (S.lives <= 0) { S.lives = 0; enterPrep(false); gameOver(false); return; }
+      enterPrep(true);   // saves the resumed state (clears the battle flag)
+      flash(S.quits >= 2 ? '전투 중 종료가 반복돼서 목숨 -1' : '전투 중 종료 · 레벨 ' + pad3(S.level) + ' 준비부터 다시');
+      return;
+    }
     enterPrep(false);
     showZoneCard();
+    flash('레벨 ' + pad3(S.level) + '부터 이어서 시작!');
   }
 
   function enterPrep(save) {
     S.scene = 'prep';
+    S.bubbles = []; S.cutin = null;
     S.units = []; S.projectiles = []; S.fx = []; S.particles = []; S.floats = [];
     S.wave = genWave(S.level);
     S.drag = null; S.ending = null; S.timeScale = 1; S.hitstop = 0; S.dim = null; S.letterbox = 0; S.flashBoard = null;
@@ -848,17 +978,19 @@
     Sound.play('zonefanfare');
   }
 
-  // Run snapshots are committed pessimistically so reloading can't undo a battle:
-  // leaving mid-fight counts as a loss, and the result is saved the moment it happens.
-  function commitRun(level, lives) {
-    if (lives <= 0) { store.del('gt_save'); S.hasSave = false; API.post('clear_progress', { player_id: PID }).catch(() => {}); }
-    else persist(serialize({ level, lives }));
+  // Run snapshots: a battle's result is saved the moment it happens, and its start is saved
+  // too (`battle: 1`, pre-battle team and gold). Closing the page mid-fight resumes at that
+  // level's prep screen; quitting the same level again costs a life, so reloading can't be
+  // used to dodge a loss.
+  function commitRun(level, lives, over) {
+    if (lives <= 0) { store.del('gt_save'); S.hasSave = false; savedCache = null; API.post('clear_progress', { player_id: PID }).catch(() => {}); }
+    else persist(serialize(Object.assign({ level, lives }, over)));
   }
 
   function startBattle() {
-    if (boardCount() === 0) { flash('PLACE A GHOST ON THE BOARD!'); Sound.play('error'); return; }
+    if (boardCount() === 0) { flash('유령을 먼저 배치하세요!'); Sound.play('error'); return; }
     clearTimeout(localSaveTimer);
-    commitRun(S.level, S.lives - 1);
+    commitRun(S.level, S.lives, { battle: 1 });
     S.grid = Array.from({ length: ROWS }, () => new Array(COLS).fill(null));
     S.units = [];
     const board = S.roster.filter(u => u.loc === 'board');
@@ -874,6 +1006,7 @@
     S.projectiles = []; S.fx = []; S.floats = []; S.particles = []; S.log = [];
     S.battleT = 0; S.timeScale = 1; S.hitstop = 0; S.stopBank = J.stopBudget; S.ending = null;
     S.streak = { n: 0, t: 0 }; S.firstBlood = false;
+    S.bubbles = []; S.cutin = null; S.cutSeen = {}; S.cutCd = 0;
     S.sel = null; S.drag = null;
     S.scene = 'battle';
     S.boss = S.units.find(u => u.boss) || null;
@@ -884,7 +1017,7 @@
       u.spawnDelay = u.team === 'P' ? u.c * 0.06 + u.r * 0.02 : 0.2 + (u.c - PCOLS) * 0.05 + u.r * 0.02;
       u.spawnT = -u.spawnDelay;
     });
-    logMsg('LEVEL ' + pad3(S.level) + ' · ' + zoneOf(S.level).name + (S.boss ? ' · BOSS!' : ''), C.gold);
+    logMsg('레벨 ' + pad3(S.level) + ' · ' + zoneOf(S.level).name + (S.boss ? ' · 보스 등장!' : ''), C.gold);
     Sound.music('battle', zoneOf(S.level).id, !!S.boss);
     if (S.boss) { Sound.duck(0.3, 1600); Sound.play('bossroar'); }
   }
@@ -915,6 +1048,7 @@
     S.result = { win, timeout, gold, interest, boss: win && boss, life: win && boss && S.lives < MAX_LIVES };
     S.gold += gold;
     // commit the outcome now (applyResult only animates the transition)
+    S.quits = 0;
     if (win) commitRun(S.level >= MAX_LEVEL ? S.level : S.level + 1, S.level >= MAX_LEVEL ? 0 : S.lives + (S.result.life ? 1 : 0));
     else commitRun(S.level, S.lives - 1);
     S.scene = 'result';
@@ -934,7 +1068,7 @@
       }
     } else {
       Sound.play('defeat');
-      S.banner = { text: timeout ? 'TIME UP!' : 'DEFEAT', t: 0, dur: 1.6, y: 200, s: 4 };
+      S.banner = { text: timeout ? '시간 초과!' : '패배…', t: 0, dur: 1.6, y: 200, s: 4 };
       S.heartFall = { t: 0, x: 158 + (S.lives - 1) * 18 };
       if (!win) Sound.play('heartbreak');
     }
@@ -972,7 +1106,7 @@
     API.post('save_progress', { player_id: PID, level: S.level, gold: S.gold, lives: 0, power: S.power, state: serialize() })
       .catch(() => {}).then(() => clearProgress());
     store.del('gt_save');
-    S.hasSave = false;
+    S.hasSave = false; savedCache = null;
     Sound.stopMusic();
     Sound.play(cleared ? 'highscore' : 'gameover');
     // look up the leaderboard early so TOP 10! can show before the modal
@@ -995,13 +1129,14 @@
     }
     f.checking = true;
     if (f.qualifies) UI.showEntry(f.level, f.online);
-    else UI.showRanking(f.list, -1, f.online ? '' : 'OFFLINE - LOCAL SCORES', () => wipeTo(toTitle));
+    else UI.showRanking(f.list, -1, f.online ? '' : '서버 연결 안 됨 · 이 기기 기록', () => wipeTo(toTitle));
   }
 
   function toTitle() {
     S.scene = 'title';
     S.units = []; S.fx = []; S.particles = []; S.floats = []; S.banner = null; S.final = null;
-    S.hasSave = !!store.get('gt_save');
+    S.hasSave = !!store.get('gt_save'); savedCache = null;
+    S.bubbles = []; S.cutin = null;
     Sound.music('title');
   }
 
@@ -1081,7 +1216,7 @@
       const ab = Math.min(tgt.shield, dmg);
       tgt.shield -= ab; dmg -= ab;
       if (tgt.shield <= 0.5) { tgt.shield = 0; shieldBreak(tgt); }
-      if (dmg <= 0) { number('BLOCK', tgt, 'block'); Sound.play('block'); return 0; }
+      if (dmg <= 0) { number('막음', tgt, 'block'); Sound.play('block'); return 0; }
     }
     const before = tgt.hp;
     tgt.hp -= dmg;
@@ -1119,10 +1254,10 @@
   }
 
   function streakKill(u) {
-    if (!S.firstBlood) { S.firstBlood = true; S.callout = { text: 'FIRST BLOOD', t: 0 }; Sound.play('streak', { tier: 0 }); return; }
+    if (!S.firstBlood) { S.firstBlood = true; S.callout = { text: '첫 처치!', t: 0 }; Sound.play('streak', { tier: 0 }); return; }
     S.streak.n = S.streak.t > 0 ? S.streak.n + 1 : 1;
     S.streak.t = 1.6;
-    const names = ['', '', 'DOUBLE!', 'TRIPLE!', 'QUAD!', 'RAMPAGE!'];
+    const names = ['', '', '더블 킬!', '트리플 킬!', '쿼드라 킬!', '학살!'];
     if (S.streak.n >= 2) { S.callout = { text: names[Math.min(5, S.streak.n)], t: 0 }; Sound.play('streak', { tier: S.streak.n - 2 }); }
   }
 
@@ -1145,9 +1280,51 @@
     gainMp(u, 10);
   }
 
+  // ---- speech bubbles + skill cut-ins (presentation only, real-time clock) ----
+  // Readability rules: one bubble per unit, at most 3 on screen (enemy chatter is dropped
+  // first), and each ghost gets its full-width cut-in only on its first skill of a battle.
+  const REPLY = {
+    stun: ['어지러워…', '으윽!', '별이 보여…'],
+    charm: ['♥_♥', '주인님…?', '좋아요♥'],
+    bind: ['못 움직여!', '이게 뭐야?!'],
+    curse: ['으스스…', '소름 끼쳐!'],
+    thanks: ['고마워!', '든든하다!']
+  };
+  const pick = a => a[Math.floor(Math.random() * a.length)];
+  function say(u, str, kind, delay) {
+    if (!u || !str) return;
+    const b = S.bubbles;
+    for (let i = b.length - 1; i >= 0; i--) if (b[i].u === u) b.splice(i, 1);
+    const important = kind === 'ally' || kind === 'boss';
+    if (b.length >= 3) { if (!important) return; b.shift(); }
+    if (kind === 'enemy' && b.length >= 2) return;
+    b.push({ u, str, kind, t: -(delay || 0), dur: kind === 'reply' ? 0.95 : 1.35 });
+  }
+  function reply(v, kind) { if (v && v.alive && REPLY[kind]) say(v, pick(REPLY[kind]), 'reply', 0.3); }
+  function cutIn(u, line) {
+    const key = u.boss ? 'boss' : u.team + u.def.id;
+    if (S.cutin || S.cutCd > 0 || S.cutSeen[key]) return;
+    S.cutSeen[key] = 1;
+    S.cutin = { u, def: u.def, boss: !!u.boss, ally: u.team === 'P', line, t: 0, dur: 1.15, seed: (Math.random() * 1e9) | 0 };
+    S.cutCd = 2.2;
+  }
+  function updateTalk(rdt) {
+    for (let i = S.bubbles.length - 1; i >= 0; i--) {
+      const b = S.bubbles[i];
+      b.t += rdt;
+      if (b.t >= b.dur || (b.t > 0 && !b.u.alive && b.kind !== 'ally')) S.bubbles.splice(i, 1);
+    }
+    if (S.cutin) { S.cutin.t += rdt; if (S.cutin.t >= S.cutin.dur) S.cutin = null; }
+    if (S.cutCd > 0) S.cutCd -= rdt;
+  }
+
   function announce(u) {
     S.skillCount[u.def.id] = (S.skillCount[u.def.id] || 0) + 1;
-    logMsg((u.team === 'P' ? '' : unitName(u) + ' ') + u.def.name + ': ' + u.def.skill + '!', u.team === 'P' ? u.def.color : '#ff8080');
+    const line = u.def.lines ? pick(u.def.lines) : '';
+    if (u.team === 'P') { say(u, line, 'ally'); cutIn(u, line); }
+    else if (u.boss) { say(u, line, 'boss'); cutIn(u, line); }
+    else say(u, line, 'enemy');
+    logMsg((u.team === 'P' ? u.def.name : unitName(u) + '(' + u.def.name + ')') + ': ' + u.def.skill + '!', u.team === 'P' ? u.def.color : '#ff8080');
     u.castHold = 0.32;
     u.anim = 'cast'; u.animT = 0;
     squash(u, 1.2, 0.85, 0.066);
@@ -1197,6 +1374,7 @@
           dealDamage(u, v, u.atk * 1.5, sk);
           if (v.alive) v.stun = Math.max(v.stun, 1.5);
         });
+        reply(hit.find(v => v.alive), 'stun');
         S.flashBoard = { color: 'rgba(160,248,255,0.25)', t: 0.05 };
         Juice.stop(J.stop.aoe, J.shake.aoe);
         Sound.play('zap');
@@ -1219,6 +1397,7 @@
         addSpr('mummy_spawn', v.x, v.y - 6, { dur: 0.6, s: 2 });
         dealDamage(u, v, u.atk * 1.2, sk);
         if (v.alive) v.stun = Math.max(v.stun, 2.5);
+        reply(v, 'stun');
         Juice.stop(J.stop.skill, J.shake.skill);
         Sound.play('bandage');
         return true;
@@ -1261,6 +1440,7 @@
           if (v !== u && v.alive && effTeam(v) === effTeam(u) && cheb(u, v) <= 1) {
             v.shield = Math.max(v.shield, v.maxHp * 0.2); v.shieldT = 5;
             addSpr('fx_buff1', v.x, v.y - 30, { dur: 0.5, s: 2 });
+            if (u.team === 'P' && !u.shieldThanks) { u.shieldThanks = 1; reply(v, 'thanks'); }
           }
         });
         Sound.play('shield');
@@ -1269,7 +1449,7 @@
       case 'palcheok': { // Po-Po-Po bind + DOT
         if (!inRange) return false;
         announce(u);
-        for (let i = 0; i < 3; i++) S.floats.push({ str: 'PO', x: t.x - 16 + i * 16, y: t.y - 70, st: NUM.skill, scale: 2, t: -i * 0.12, dur: 0.7, vx: 0, vy: -30, g: 0 });
+        for (let i = 0; i < 3; i++) S.floats.push({ str: '포', x: t.x - 16 + i * 16, y: t.y - 70, st: NUM.skill, scale: 2, t: -i * 0.12, dur: 0.7, vx: 0, vy: -30, g: 0 });
         addSpr('palcheok_spawn', t.x, t.y - 8, { dur: 0.8, s: 4, behind: true });
         addSpr('palcheok_sfx', t.x, t.y - 34, { dur: 0.45, s: 2, flip: u.face < 0 });
         foes.filter(v => cheb(v, t) <= 1).forEach(v => {
@@ -1277,6 +1457,7 @@
           v.dots.push({ dps: u.atk * 0.8, t: 4, acc: 0, src: u });
           v.flashT = 0.05; v.freeze = Math.max(v.freeze, 0.1);
         });
+        reply(t, 'bind');
         Juice.stop(J.stop.aoe, 0.4);
         Sound.play('popopo');
         return true;
@@ -1315,7 +1496,7 @@
     addSpr('reaper_spawn', v.x, v.y - 6, { dur: 0.7, s: 2, behind: true });
     addSpr('reaper_sfx', v.x, v.y - 26, { dur: 0.4, s: 2, flip: v.x < u.x });
     S.fx.push({ type: 'slam', name: 'fx_exec0', x: v.x, y: v.y - 30, t: 0, dur: 0.5 });
-    number('EXECUTE!', v, 'exec');
+    number('처형!', v, 'exec');
     dealDamage(u, v, v.hp + 1, { kind: 'true', noMp: true });
     S.flashBoard = { color: 'rgba(255,255,255,0.6)', t: 0.017, then: { color: 'rgba(224,48,48,0.25)', t: 0.034 } };
     Juice.stop(J.stop.execute, J.shake.execute);
@@ -1425,7 +1606,7 @@
           S.projectiles.splice(i, 1);
           for (let h = 0; h < 5; h++) S.fx.push({ type: 'sprite', name: 'fx_charm1', x: tx + rand(-14, 14), y: ty + rand(-10, 6), t: 0, dur: 0.6, s: 2, rise: 20 });
           dealDamage(p.src, t, p.src.atk, { kind: 'skill' });
-          if (t.alive) { t.charm = 3; t.target = null; number('CHARMED', t, 'skill'); }
+          if (t.alive) { t.charm = 3; t.target = null; number('매혹!', t, 'skill'); reply(t, 'charm'); }
           Juice.stop(0.05, 0.2);
         }
         continue;
@@ -1438,6 +1619,7 @@
           addSpr('maiden_spawn', t.x, t.y - 6, { dur: 0.5, s: 2, behind: true });
           addSpr('fx_debuff1', t.x, t.y - 30, { dur: 0.5, s: 2 });
           t.curse = 4;
+          reply(t, 'curse');
           dealDamage(p.src, t, p.dmg, { kind: 'skill' });
           Juice.stop(J.stop.skill, J.shake.skill);
         } else {
@@ -1597,7 +1779,7 @@
     }
   }
   function logMsg(str, color) {
-    S.log.push({ str: str.toUpperCase(), color: color || '#fff' });
+    S.log.push({ str, color: color || '#fff' });
     if (S.log.length > 5) S.log.shift();
   }
 
@@ -1815,7 +1997,7 @@
   function drawHUD() {
     ctx.fillStyle = C.panel; ctx.fillRect(0, 0, W, 28);
     ctx.fillStyle = C.line; ctx.fillRect(0, 26, W, 2);
-    text('LV ' + pad3(S.level), 6, 4, C.gold, 2);
+    text('레벨 ' + pad3(S.level), 6, 4, C.gold, 2);
     // boss pips (progress to the next boss)
     const into = S.level % 10;
     for (let i = 0; i < 10; i++) {
@@ -1823,7 +2005,7 @@
       ctx.fillRect(6 + i * 7, 20, 5, 4);
     }
     text(zoneOf(S.level).name, 84, 6, C.text, 1);
-    if (isBossLevel(S.level) && Math.floor(S.time * 3) % 2 === 0) text('BOSS', 84, 16, C.sel, 1);
+    if (isBossLevel(S.level) && Math.floor(S.time * 3) % 2 === 0) text('보스!', 84, 16, C.sel, 1);
     for (let i = 0; i < S.lives - (S.heartFall ? 1 : 0); i++) spr('ic_heart', 158 + i * 18, 14, 1);
     if (S.heartFall) {
       const k = clamp(S.heartFall.t / 0.5, 0, 1);
@@ -1834,10 +2016,12 @@
     spr('ic_coin', 256, 14, 1);
     text(fmt(S.goldShown), 268, 6 - (pulse > 1 ? 1 : 0), pulse > 1 ? '#fff6b0' : C.gold, 2);
     const bc = S.scene === 'battle' || S.scene === 'result' ? S.units.filter(u => u.team === 'P' && u.alive).length : boardCount();
-    text('UNIT ' + bc + '/' + playerCap(S.level), 340, 6, C.hover, 2);
-    text('BEST ' + pad3(S.best), 466, 5, C.text, 1);
-    text('ALTAR ' + S.power, 466, 15, '#b080ff', 1);
-    button(BTN_SOUND, Sound.isMuted() ? 'OFF' : 'SND', Sound.isMuted() ? '#3a4656' : '#2a5a8a', true, 1);
+    text('유닛 ' + bc + '/' + playerCap(S.level), 340, 6, C.hover, 2);
+    text('최고 ' + pad3(S.best), 466, 4, C.text, 1);
+    text('제단 ' + S.power, 466, 15, '#b080ff', 1);
+    button(BTN_SOUND, Sound.isMuted() ? '끔' : '소리', Sound.isMuted() ? '#3a4656' : '#2a5a8a', true, 1);
+    if (S.scene === 'prep') button(BTN_HELP, '?', '#5a4a1a', true, 1);
+    if (S.saveT > 0) text('저장됨', BTN_HELP.x - 6, 9, 'rgba(160,230,170,' + clamp(S.saveT, 0, 1).toFixed(2) + ')', 1, 'right');
   }
 
   function drawBoard() {
@@ -1850,6 +2034,17 @@
     ctx.fillStyle = C.cell;
     for (let r = 0; r < ROWS; r++) for (let c = 0; c < COLS; c++) ctx.fillRect(BOARD_X + c * CELL_W + 2, BOARD_Y + r * CELL_H + 2, CELL_W - 4, CELL_H - 4);
     ctx.globalAlpha = 1;
+    // attack range of the ghost being placed / selected: translucent cells (orange melee, blue ranged)
+    const rng = prep ? placingRange() : null;
+    if (rng) {
+      for (let r = 0; r < ROWS; r++) for (let c = 0; c < COLS; c++) {
+        const d = Math.max(Math.abs(r - rng.r), Math.abs(c - rng.c));
+        if (d === 0 || d > rng.range) continue;
+        const foe = c >= PCOLS;
+        ctx.fillStyle = rng.range > 1 ? 'rgba(110,190,255,' + (foe ? 0.3 : 0.15) + ')' : 'rgba(255,160,70,' + (foe ? 0.34 : 0.17) + ')';
+        ctx.fillRect(BOARD_X + c * CELL_W + 3, BOARD_Y + r * CELL_H + 3, CELL_W - 6, CELL_H - 6);
+      }
+    }
     for (let r = 0; r < ROWS; r++) for (let c = 0; c < COLS; c++) {
       const x = BOARD_X + c * CELL_W + 2, y = BOARD_Y + r * CELL_H + 2, w = CELL_W - 4, h = CELL_H - 4;
       ctx.strokeStyle = c < PCOLS ? C.grid : '#5e4656';
@@ -1873,6 +2068,20 @@
     ctx.fillStyle = C.hover; ctx.fillRect(BOARD_X + PCOLS * CELL_W - 1, BOARD_Y, 1, ROWS * CELL_H);
     ctx.fillStyle = C.sel; ctx.fillRect(BOARD_X + PCOLS * CELL_W, BOARD_Y, 1, ROWS * CELL_H);
     ctx.globalAlpha = 1;
+  }
+
+  // origin cell + range for the overlay: the drop cell while dragging, the hovered cell while a
+  // ghost is selected (tap-to-place preview), else the selected ghost's own cell
+  function placingRange() {
+    let u = null, cell = null;
+    if (S.drag && S.drag.active) { u = S.drag.u; cell = dropCell(S.drag.feet); }
+    else if (S.sel && S.sel.kind === 'roster' && S.roster.indexOf(S.sel.u) >= 0) {
+      u = S.sel.u;
+      const hc = cellAt(S.mouse);
+      cell = hc && hc.c < PCOLS ? hc : u.loc === 'board' ? { r: u.r, c: u.c } : null;
+    }
+    if (!u || !cell || cell.c >= PCOLS) return null;
+    return { r: cell.r, c: cell.c, range: GMAP[u.id].range };
   }
 
   function drawBars(u, x, y, w) {
@@ -2023,7 +2232,7 @@
   }
 
   function drawBench() {
-    text('BENCH', 6, BENCH_Y + 12, C.hover, 1);
+    text('대기석', 6, BENCH_Y + 12, C.hover, 1);
     text(S.roster.filter(u => u.loc === 'bench').length + '/' + BENCH_N, 6, BENCH_Y + 24, C.dim, 1);
     for (let i = 0; i < BENCH_N; i++) {
       const x = BENCH_X + i * SLOT_GAP, y = BENCH_Y;
@@ -2052,7 +2261,7 @@
       if (!id) {
         ctx.fillStyle = '#000'; ctx.fillRect(x, y, CARD_W, CARD_H);
         ctx.fillStyle = '#08121a'; ctx.fillRect(x + 1, y + 1, CARD_W - 2, CARD_H - 2);
-        text('SOLD', x + CARD_W / 2, y + CARD_H / 2 - 3, '#2a3a4c', 1, 'center');
+        text('구매 완료', x + CARD_W / 2, y + CARD_H / 2 - 3, '#2a3a4c', 1, 'center');
         continue;
       }
       const d = GMAP[id];
@@ -2064,39 +2273,39 @@
       ctx.strokeStyle = merge && Math.floor(S.time * 4) % 2 === 0 ? C.gold : C.grid; ctx.lineWidth = 1; ctx.strokeRect(x + 1.5, y + 1.5, CARD_W - 3, CARD_H - 3);
       ctx.fillStyle = COST_COLOR[d.cost]; ctx.fillRect(x + 2, y + 2, CARD_W - 4, 3);
       spr(id + (hot ? '_idle1' : '_idle0'), x + CARD_W / 2, y + 60, 2, { a: afford ? 1 : 0.35 });
-      text(d.name.length > 13 ? d.name.slice(0, 13) : d.name, x + CARD_W / 2, y + 62, '#fff', 1, 'center');
-      text(d.origin === 'W' ? 'WESTERN' : 'EASTERN', x + CARD_W / 2, y + 72, d.origin === 'W' ? C.west : C.east, 1, 'center');
+      text(fitText(d.name, CARD_W - 6, 1), x + CARD_W / 2, y + 62, '#fff', 1, 'center');
+      text((d.origin === 'W' ? '서양' : '동양') + ' · ' + (d.range > 1 ? '원거리' : '근접'), x + CARD_W / 2, y + 73, d.origin === 'W' ? C.west : C.east, 1, 'center');
       costLabel(d.cost, afford)(x + CARD_W / 2, y + 82);
       if (merge) spr('ic_star', x + CARD_W - 12, y + 16, 1, { sx: 0.75, sy: 0.75 });
     }
     if (dragging) {
       ctx.fillStyle = 'rgba(160,20,20,0.6)';
       ctx.fillRect(SHOP_X - 4, SHOP_Y - 4, BTN_REROLL.x - SHOP_X, CARD_H + 8);
-      text('DROP TO SELL +' + sellValue(S.drag.u) + 'G', (BTN_REROLL.x + SHOP_X) / 2 - 4, SHOP_Y + CARD_H / 2 - 7, '#fff', 2, 'center');
+      text('여기에 놓으면 판매 +' + sellValue(S.drag.u) + '골드', (BTN_REROLL.x + SHOP_X) / 2 - 4, SHOP_Y + CARD_H / 2 - 7, '#fff', 2, 'center');
     }
-    button(BTN_REROLL, 'REROLL', '#2a5a8a', S.gold >= REROLL_COST, 1, costLabel(REROLL_COST, S.gold >= REROLL_COST));
-    button(BTN_ALTAR, 'ALTAR', '#5a2a8a', S.gold >= altarCost(), 1, costLabel(altarCost(), S.gold >= altarCost()));
-    button(BTN_FIGHT, 'FIGHT!', '#b82a30', boardCount() > 0, 3);
+    button(BTN_REROLL, '새로고침', '#2a5a8a', S.gold >= REROLL_COST, 1, costLabel(REROLL_COST, S.gold >= REROLL_COST));
+    button(BTN_ALTAR, '제단', '#5a2a8a', S.gold >= altarCost(), 1, costLabel(altarCost(), S.gold >= altarCost()));
+    button(BTN_FIGHT, '전투 시작!', '#b82a30', boardCount() > 0, 3);
     ctx.restore();
   }
 
   function drawBattlePanel() {
     panel(BOX_LOG.x, BOX_LOG.y, BOX_LOG.w, BOX_LOG.h);
-    text('BATTLE LOG', BOX_LOG.x + 8, BOX_LOG.y + 7, C.hover, 1);
-    S.log.forEach((l, i) => text(l.str.slice(0, 76), BOX_LOG.x + 8, BOX_LOG.y + 19 + i * 11, l.color, 1));
+    text('전투 기록', BOX_LOG.x + 8, BOX_LOG.y + 6, C.hover, 1);
+    S.log.slice(-4).forEach((l, i) => text(fitText(l.str, BOX_LOG.w - 16, 1), BOX_LOG.x + 8, BOX_LOG.y + 19 + i * 13, l.color, 1));
     const sum = team => S.units.filter(u => u.team === team && u.alive).reduce((a, u) => a + u.hp, 0);
     const max = team => S.units.filter(u => u.team === team).reduce((a, u) => a + u.maxHp, 0) || 1;
     const bar = (label, y, k, col) => {
       text(label, BOX_LOG.x + 8, y, C.text, 1);
-      ctx.fillStyle = '#000'; ctx.fillRect(BOX_LOG.x + 44, y - 1, 420, 8);
-      ctx.fillStyle = col; ctx.fillRect(BOX_LOG.x + 45, y, Math.ceil(418 * clamp(k, 0, 1)), 6);
+      ctx.fillStyle = '#000'; ctx.fillRect(BOX_LOG.x + 44, y, 420, 8);
+      ctx.fillStyle = col; ctx.fillRect(BOX_LOG.x + 45, y + 1, Math.ceil(418 * clamp(k, 0, 1)), 6);
     };
-    bar('ALLY', BOX_LOG.y + 78, sum('P') / max('P'), C.hover);
-    bar('FOES', BOX_LOG.y + 90, sum('E') / max('E'), C.hpFoe);
-    button(BTN_SPEED, 'SPEED X' + S.speed, '#2a5a8a', S.scene === 'battle');
+    bar('아군', BOX_LOG.y + 76, sum('P') / max('P'), C.hover);
+    bar('적군', BOX_LOG.y + 89, sum('E') / max('E'), C.hpFoe);
+    button(BTN_SPEED, '속도 x' + S.speed, '#2a5a8a', S.scene === 'battle');
     panel(BOX_TIMER.x, BOX_TIMER.y, BOX_TIMER.w, BOX_TIMER.h);
     const left = Math.max(0, Math.ceil(BATTLE_LIMIT - S.battleT));
-    text('TIME', BOX_TIMER.x + 30, BOX_TIMER.y + 22, C.dim, 1, 'center');
+    text('남은 시간', BOX_TIMER.x + 34, BOX_TIMER.y + 22, C.dim, 1, 'center');
     text(String(left), BOX_TIMER.x + 90, BOX_TIMER.y + 12, left <= 10 ? C.sel : '#fff', 4, 'center');
   }
 
@@ -2106,22 +2315,21 @@
     const s = synergy(list);
     let y = SYN.y + 8;
     const x = SYN.x + 6;
-    text('SYNERGY', x, y, C.gold, 1); y += 13;
-    text('WEST ' + s.w + '/4', x, y, C.west, 1); y += 10;
-    text(s.w >= 4 ? '+35% HP' : s.w >= 2 ? '+15% HP' : '2: +HP', x, y, s.w >= 2 ? '#fff' : C.dim, 1); y += 13;
-    text('EAST ' + s.e + '/4', x, y, C.east, 1); y += 10;
-    text(s.e >= 4 ? '+35% ATK' : s.e >= 2 ? '+15% ATK' : '2: +ATK', x, y, s.e >= 2 ? '#fff' : C.dim, 1); y += 14;
-    text('ALTAR LV ' + S.power, x, y, '#b080ff', 1); y += 10;
+    const line = (str, col, gap) => { text(str, x, y, col, 1); y += gap || 12; };
+    line('시너지', C.gold, 15);
+    line('서양 ' + s.w + '/4', C.west);
+    line(s.w >= 4 ? '체력 +35%' : s.w >= 2 ? '체력 +15%' : '2명: 체력↑', s.w >= 2 ? '#fff' : C.dim, 15);
+    line('동양 ' + s.e + '/4', C.east);
+    line(s.e >= 4 ? '공격 +35%' : s.e >= 2 ? '공격 +15%' : '2명: 공격↑', s.e >= 2 ? '#fff' : C.dim, 15);
     const pm = powerMul();
-    text('X' + (pm < 100 ? pm.toFixed(2) : fmt(pm)), x, y, '#fff', 1); y += 14;
-    text('FOE BASE X', x, y, '#ff8080', 1); y += 10;
+    line('제단 x' + (pm < 100 ? pm.toFixed(2) : fmt(pm)), '#b080ff', 15);
     const m = levelMultipliers(S.level);
     const mf = v => (v < 100 ? v.toFixed(2) : fmt(v));
-    text('HP ' + mf(m.hp), x, y, '#fff', 1); y += 10;
-    text('AT ' + mf(m.atk), x, y, '#fff', 1); y += 14;
+    line('적 체력 x' + mf(m.hp), '#ff9090');
+    line('적 공격 x' + mf(m.atk), '#ff9090', 15);
+    line(isBossLevel(S.level) ? '보스 등장!' : '보스 ' + pad3(Math.ceil(S.level / 10) * 10), isBossLevel(S.level) ? C.sel : C.dim);
     const nz = ZONES.find(z => z.from > S.level);
-    text(isBossLevel(S.level) ? 'BOSS NOW!' : 'BOSS ' + pad3(Math.ceil(S.level / 10) * 10), x, y, isBossLevel(S.level) ? C.sel : C.dim, 1); y += 10;
-    if (nz) { text('NEXT ZONE', x, y, C.dim, 1); y += 10; text(nz.name.slice(0, 11), x, y, C.text, 1); y += 10; text('AT ' + pad3(nz.from), x, y, C.text, 1); }
+    if (nz) { line('다음: ' + nz.name, C.dim); line('레벨 ' + pad3(nz.from), C.dim); }
   }
 
   function drawInfo() {
@@ -2141,33 +2349,40 @@
       def = GMAP[S.shop[S.hover]];
       const st = playerStats(def.id, 1, { hp: 1, atk: 1 }); hp = st.hp; atk = st.atk;
     }
-    const x = INFO.x + 6;
+    const x = INFO.x + 6, maxW = INFO.w - 11;
     let y = INFO.y + 8;
+    if (!def && S.scene !== 'prep') {
+      text('정보', x, y, C.gold, 1); y += 15;
+      wrap('유닛을 누르면 정보가 보여요', 11).forEach(w => { text(w, x, y, C.dim, 1); y += 12; });
+      return;
+    }
     if (!def) {
-      text('INFO', x, y, C.gold, 1); y += 14;
-      ['TAP A UNIT', 'TO INSPECT.', '', 'DRAG, OR TAP', 'THEN TAP A', 'CELL TO', 'DEPLOY.', '', '3 SAME =', 'STAR UP!'].forEach(l => { text(l, x, y, C.dim, 1); y += 10; });
+      // how to play, in three short steps
+      text('도움말', x, y, C.gold, 1); y += 15;
+      [['① 카드로 유령 구매', '#fff'], ['② 왼쪽 칸에 배치', '#fff'], ['③ 전투 시작!', '#fff'], ['', 0],
+        ['이기면 레벨업!', C.gold], ['같은 유령 3마리', C.hover], ['= ★ 강화', C.hover], ['', 0], ['언제 꺼도 저장돼요', C.dim]].forEach(([l, c]) => {
+        if (l) wrap(l, 11).forEach(w => { text(w, x, y, c, 1); y += 12; }); else y += 5;
+      });
       return;
     }
     if (enemy) {
-      text((boss ? zoneOf(S.level).skins.bossName : MONSTERS[skin].name).slice(0, 11), x, y, '#ff8080', 1); y += 10;
-      text('SPIRIT:', x, y, C.dim, 1); y += 10;
-      text(def.name.slice(0, 11), x, y, '#fff', 1); y += 12;
+      text(fitText(boss ? zoneOf(S.level).skins.bossName : MONSTERS[skin].name, maxW, 1), x, y, '#ff8080', 1); y += 12;
+      text(fitText('빙의: ' + def.name, maxW, 1), x, y, C.dim, 1); y += 13;
     } else {
-      text(def.name.slice(0, 11), x, y, '#fff', 1); y += 10;
-      text(star > 1 ? '*'.repeat(star) : def.origin === 'W' ? 'WESTERN' : 'EASTERN', x, y, star > 1 ? C.gold : def.origin === 'W' ? C.west : C.east, 1); y += 12;
+      text(fitText(def.name, maxW, 1), x, y, '#fff', 1); y += 12;
+      text(star > 1 ? '★'.repeat(star) : def.origin === 'W' ? '서양' : '동양', x, y, star > 1 ? C.gold : def.origin === 'W' ? C.west : C.east, 1); y += 13;
     }
     spr('ic_heart', x + 4, y + 3, 1, { sx: 0.5, sy: 0.5 });
-    text((live ? fmt(live.hp) + '/' : '') + fmt(hp), x + 11, y, '#70ff70', 1); y += 10;
+    text((live ? fmt(live.hp) + '/' : '') + fmt(hp), x + 11, y, '#70ff70', 1); y += 11;
     spr('ic_sword', x + 4, y + 3, 1, { sx: 0.5, sy: 0.5 });
-    text(fmt(atk), x + 11, y, '#ff9a60', 1); y += 10;
-    text('RNG ' + def.range + ' ASP' + String(def.aspd).replace(/^0/, ''), x, y, C.dim, 1); y += 10;
-    text('MP ' + (live ? Math.floor(live.mp) + '/' : '') + def.mp, x, y, C.mp, 1); y += 12;
-    const skillLines = wrap(def.skill, 11);
-    skillLines.forEach(l => { text(l, x, y, def.color, 1); y += 9; });
-    y += 2;
-    const maxLines = Math.floor(((roster && S.scene === 'prep' ? BTN_SELL.y : INFO.y + INFO.h - 4) - y) / 9);
-    wrap(def.desc, 11).slice(0, maxLines).forEach(l => { text(l, x, y, C.text, 1); y += 9; });
-    if (roster && S.scene === 'prep') button(BTN_SELL, 'SELL ' + sellValue(roster), '#8a2a30', true, 1);
+    text(fmt(atk), x + 11, y, '#ff9a60', 1); y += 12;
+    text('사거리 ' + def.range + (def.range > 1 ? ' 원거리' : ' 근접'), x, y, def.range > 1 ? '#7fd0ff' : '#ffb070', 1); y += 12;
+    text('MP ' + (live ? Math.floor(live.mp) + '/' : '') + def.mp, x, y, C.mp, 1); y += 13;
+    wrap(def.skill, 11).forEach(l => { text(l, x, y, def.color, 1); y += 12; });
+    y += 1;
+    const maxLines = Math.floor(((roster && S.scene === 'prep' ? BTN_SELL.y : INFO.y + INFO.h - 4) - y) / 11);
+    wrap(def.desc, 11).slice(0, maxLines).forEach(l => { text(l, x, y, C.text, 1); y += 11; });
+    if (roster && S.scene === 'prep') button(BTN_SELL, '판매 ' + sellValue(roster) + 'G', '#8a2a30', true, 1);
   }
 
   function drawFxLayer(behind) {
@@ -2254,9 +2469,73 @@
       let x = f.x;
       if (f.crit && f.t < 0.067) x += Math.random() < 0.5 ? -1 : 1;
       textStyled(f.str, x, f.y, f.st, f.scale, 'center', pop);
-      if (f.crit) textStyled('CRIT!', x, f.y - 24, NUM.banner, 1, 'center');
+      if (f.crit) textStyled('치명타!', x, f.y - 24, NUM.banner, 1, 'center');
     }
     ctx.globalAlpha = 1;
+  }
+
+  function drawBubbles() {
+    if (!S.bubbles.length) return;
+    const placed = [];
+    for (const b of S.bubbles) {
+      if (b.t < 0) continue;
+      const u = b.u;
+      const top = u.y - fh(unitFrame(u), u.boss ? 3 : 2) - 18;
+      const w = textWidth(b.str, 1) + 12, h = 17;
+      const x = clamp(Math.round(u.x - w / 2), 4, W - w - 4);
+      let y = Math.max(STAGE_Y + 3, Math.round(top - h));
+      for (let k = 0; k < 3; k++) {   // stack above bubbles already placed instead of overlapping
+        const hit = placed.find(q => x < q.x + q.w + 2 && x + w + 2 > q.x && y < q.y + q.h + 3 && y + h + 3 > q.y);
+        if (!hit) break;
+        y = hit.y - h - 4;
+      }
+      placed.push({ x, y, w, h });
+      const a = b.t < 0.08 ? b.t / 0.08 : b.t > b.dur - 0.2 ? (b.dur - b.t) / 0.2 : 1;
+      ctx.globalAlpha = clamp(a, 0, 1);
+      const p = b.t < 0.1 ? Math.round((1 - b.t / 0.1) * 2) : 0;   // little pop on appear
+      const edge = b.kind === 'ally' ? C.hover : b.kind === 'reply' ? '#8792a6' : C.sel;
+      const fill = b.kind === 'reply' ? '#dde3ea' : '#f7f4ea';
+      ctx.fillStyle = edge;
+      ctx.fillRect(x - p, y + 1 - p, w + 2 * p, h - 2 + 2 * p); ctx.fillRect(x + 1 - p, y - p, w - 2 + 2 * p, h + 2 * p);
+      ctx.fillStyle = fill; ctx.fillRect(x + 1, y + 1, w - 2, h - 2);
+      const tx = clamp(Math.round(u.x), x + 6, x + w - 7);   // tail toward the speaker
+      ctx.fillStyle = edge; ctx.fillRect(tx - 3, y + h - 1, 7, 2); ctx.fillRect(tx - 2, y + h + 1, 5, 2); ctx.fillRect(tx - 1, y + h + 3, 3, 1);
+      ctx.fillStyle = fill; ctx.fillRect(tx - 2, y + h - 1, 5, 1); ctx.fillRect(tx - 1, y + h, 3, 1);
+      text(b.str, x + w / 2, y + 5, '#1b2030', 1, 'center', false);
+    }
+    ctx.globalAlpha = 1;
+  }
+
+  const cutStyles = {};
+  function drawCutIn() {
+    const c = S.cutin;
+    if (!c) return;
+    const t = c.t, d = c.dur;
+    const inK = easeOutCubic(clamp(t / 0.14, 0, 1));
+    const outK = t > d - 0.16 ? clamp((t - (d - 0.16)) / 0.16, 0, 1) : 0;
+    const y0 = 46, bh = 60;
+    const col = c.ally ? c.def.color : C.sel;
+    ctx.save();
+    ctx.beginPath(); ctx.rect(0, STAGE_Y, W, CONSOLE_Y - STAGE_Y); ctx.clip();
+    ctx.translate(Math.round((1 - inK) * -W + outK * outK * W), 0);
+    ctx.fillStyle = 'rgba(6,12,20,0.9)'; ctx.fillRect(0, y0, W, bh);
+    ctx.fillStyle = col; ctx.fillRect(0, y0, W, 2); ctx.fillRect(0, y0 + bh - 2, W, 2);
+    const rr = mulberry32(c.seed);   // speed lines
+    ctx.fillStyle = 'rgba(255,255,255,0.12)';
+    for (let i = 0; i < 16; i++) {
+      const ly = y0 + 5 + Math.floor(rr() * (bh - 10)), len = 30 + rr() * 110;
+      const lx = ((rr() * (W + 200) - t * 1100) % (W + 200) + W + 200) % (W + 200) - 100;
+      ctx.fillRect(Math.round(lx), ly, Math.round(len), 1);
+    }
+    // the caster, popping out of the band
+    const frame = c.boss ? 'en_' + c.u.skin : FR[c.def.id + '_cast'] ? c.def.id + '_cast' : c.def.id + '_idle0';
+    spr(frame, 78, y0 + bh - 3, c.boss ? 2 : 3, { flip: c.boss ? (MONSTERS[c.u.skin] && MONSTERS[c.u.skin].face === 1) : false });
+    const who = c.boss ? zoneOf(S.level).skins.bossName : c.def.name;
+    text(who + (c.ally ? '' : ' (적)'), 150, y0 + 7, col, 1);
+    const st = cutStyles[col] || (cutStyles[col] = { top: '#ffffff', bot: col, out: '#000000', split: 3 });
+    textStyled(c.def.skill + '!', 150, y0 + 30, st, 3, 'left');
+    if (c.line) text('“' + c.line + '”', 152, y0 + 43, '#f0f0f0', 2);
+    ctx.restore();
   }
 
   function drawDrag() {
@@ -2268,7 +2547,7 @@
   function drawMsg() {
     if (S.msgT <= 0 || !S.msg) return;
     ctx.globalAlpha = clamp(S.msgT * 2, 0, 1);
-    const w = S.msg.length * 12 + 24;
+    const w = textWidth(S.msg, 2) + 26;
     panel(Math.round(W / 2 - w / 2), 57, w, 30);
     text(S.msg, W / 2, 65, '#fff', 2, 'center');
     ctx.globalAlpha = 1;
@@ -2299,7 +2578,7 @@
 
   function drawCallout() {
     const c = S.callout;
-    if (!c) return;
+    if (!c || S.cutin) return;
     const e = clamp(c.t / 0.16, 0, 1);
     const y = lerp(40, 64, easeOutCubic(e));
     ctx.globalAlpha = c.t > 0.56 ? clamp(1 - (c.t - 0.56) / 0.12, 0, 1) : 1;
@@ -2314,7 +2593,7 @@
     ctx.globalAlpha = clamp(a, 0, 1);
     ctx.fillStyle = 'rgba(6,17,25,0.82)'; ctx.fillRect(0, 180, W, 64);
     ctx.fillStyle = C.line; ctx.fillRect(0, 180, W, 2); ctx.fillRect(0, 242, W, 2);
-    text('STAGE ' + pad3(S.level), W / 2, 188, C.text, 2, 'center');
+    text('레벨 ' + pad3(S.level), W / 2, 188, C.text, 2, 'center');
     textStyled(z.zone.name, W / 2, 224, NUM.banner, 3, 'center');
     ctx.globalAlpha = 1;
   }
@@ -2331,7 +2610,7 @@
       const x = Math.round(lerp(W, 180, k));
       panel(x, 60, 280, 36);
       ctx.strokeStyle = C.sel; ctx.lineWidth = 2; ctx.strokeRect(x + 1, 61, 278, 34);
-      text('BOSS · ' + zoneOf(S.level).skins.bossName + ' · LV ' + pad3(S.level), x + 140, 66, C.sel, 1, 'center');
+      text('보스 · ' + zoneOf(S.level).skins.bossName + ' · 레벨 ' + pad3(S.level), x + 140, 66, C.sel, 1, 'center');
       const f = clamp((t - 0.6) / 0.5, 0, 1);
       ctx.fillStyle = '#dcdceb'; ctx.fillRect(x + 10, 80, 260, 8);
       ctx.fillStyle = '#000'; ctx.fillRect(x + 11, 81, 258, 6);
@@ -2358,7 +2637,7 @@
     if (t < 0) return;
     const s = t < 0.12 ? lerp(2, 1, t / 0.12) : 1;
     ctx.globalAlpha = t > 0.4 ? clamp(1 - (t - 0.4) / 0.1, 0, 1) : 1;
-    textStyled('FIGHT!', W / 2, 190, { top: '#fff2a0', bot: C.gold, out: '#c0282e', split: 3 }, 4, 'center', s);
+    textStyled('전투 시작!', W / 2, 190, { top: '#fff2a0', bot: C.gold, out: '#c0282e', split: 3 }, 4, 'center', s);
     ctx.globalAlpha = 1;
   }
 
@@ -2375,18 +2654,20 @@
     if (S.scene !== 'result' || !S.result) return;
     const r = S.result;
     if (S.resultT > 0.5) {
-      const line = r.win ? '+' + r.gold + ' GOLD' + (r.interest ? ' (INTEREST ' + r.interest + ')' : '') + (r.life ? '  +1 LIFE' : '') : (S.lives - 1 > 0 ? 'LIFE LOST - ' + (S.lives - 1) + ' LEFT  +' + r.gold + ' GOLD' : 'NO LIVES LEFT...');
+      ctx.fillStyle = 'rgba(6,17,25,0.78)'; ctx.fillRect(0, 233, W, 32);
+      const line = r.win ? '+' + r.gold + '골드' + (r.interest ? ' (이자 ' + r.interest + ')' : '') + (r.life ? '  ♥+1' : '') + '  →  다음 레벨 ' + pad3(Math.min(MAX_LEVEL, S.level + 1)) : (S.lives - 1 > 0 ? '목숨 -1 (남은 목숨 ' + (S.lives - 1) + ')  +' + r.gold + '골드 · 같은 레벨 재도전' : '남은 목숨이 없어요…');
       text(line, W / 2, 238, r.win ? C.gold : '#ff8080', 1, 'center');
     }
-    if (S.resultT > 0.9 && Math.floor(S.time * 2) % 2 === 0) text('TAP TO CONTINUE', W / 2, 250, '#fff', 1, 'center');
+    if (S.resultT > 0.9 && Math.floor(S.time * 2) % 2 === 0) text('화면을 누르면 계속', W / 2, 252, '#fff', 1, 'center');
   }
 
   // ---- title -----------------------------------------------------------
   const TITLE_BTNS = {
-    start: { x: 210, y: 280, w: 220, h: 40 },
-    cont: { x: 210, y: 326, w: 220, h: 40 },
-    rank: { x: 210, y: 372, w: 220, h: 40 },
-    sound: { x: 210, y: 418, w: 220, h: 40 }
+    start: { x: 120, y: 272, w: 196, h: 44 },
+    cont: { x: 324, y: 272, w: 196, h: 44 },
+    help: { x: 120, y: 324, w: 196, h: 36 },
+    rank: { x: 324, y: 324, w: 196, h: 36 },
+    sound: { x: 222, y: 368, w: 196, h: 32 }
   };
 
   function drawTitle() {
@@ -2420,25 +2701,31 @@
 
     const bob = Math.round(Math.sin(S.time * Math.PI) * 2);
     spr('tx_logo', W / 2, 40 + bob, 2);
-    text('999 NIGHTS OF THE GHOST', W / 2, 70, C.text, 1, 'center');
-    text('BEST LEVEL ' + pad3(S.best), W / 2, 84, C.gold, 1, 'center');
+    text('유령들의 999일 밤', W / 2, 70, C.text, 1, 'center');
+    text('최고 기록 레벨 ' + pad3(S.best), W / 2, 84, C.gold, 1, 'center');
     // ghost parade
     GHOSTS.forEach((g, i) => {
       const x = 40 + i * 62, y = 186 + Math.round(Math.sin(S.time * 4 + i * 0.7) * 3);
       const pop = S.titlePop && S.titlePop.i === i ? clamp(1 - S.titlePop.t / 0.12, 0, 1) : 0;
       spr(g.id + (Math.floor(S.time * 2.5 + i) % 2 ? '_idle1' : '_idle0'), x, y, 2, { sx: 1 + 0.15 * pop, sy: 1 - 0.15 * pop });
-      text(g.name.split(/[ -]/)[0].slice(0, 9), x, 192, g.origin === 'W' ? C.west : C.east, 1, 'center');
+      text(g.short, x, 192, g.origin === 'W' ? C.west : C.east, 1, 'center');
     });
-    text('WESTERN LEGENDS', 164, 104, C.west, 1, 'center');
-    text('EASTERN SPIRITS', 474, 104, C.east, 1, 'center');
+    text('서양의 전설', 164, 104, C.west, 1, 'center');
+    text('동양의 귀신', 474, 104, C.east, 1, 'center');
     drawFxLayer(false);
 
-    button(TITLE_BTNS.start, 'NEW GAME', '#b82a30', true);
-    button(TITLE_BTNS.cont, 'CONTINUE', '#2a5a8a', S.hasSave);
-    button(TITLE_BTNS.rank, 'RANKING', '#5a2a8a', true);
-    button(TITLE_BTNS.sound, Sound.isMuted() ? 'SOUND: OFF' : 'SOUND: ON', '#2a6a4a', true);
+    button(TITLE_BTNS.start, '새 게임', '#b82a30', true);
+    const sv = S.hasSave ? savedRun() : null;
+    button(TITLE_BTNS.cont, '이어하기', '#2a5a8a', S.hasSave, 2, (cx, cy, on) => {
+      text(sv ? '레벨 ' + pad3(sv.level) + ' · 목숨 ' + sv.lives : S.hasSave ? '저장된 게임' : '저장된 게임 없음', cx, cy + 1, on ? '#cfe8ff' : '#5a6a7e', 1, 'center');
+    });
+    button(TITLE_BTNS.help, '게임 방법', '#7a5a1a', true);
+    button(TITLE_BTNS.rank, '랭킹', '#5a2a8a', true);
+    button(TITLE_BTNS.sound, Sound.isMuted() ? '소리: 꺼짐' : '소리: 켜짐', '#2a6a4a', true, 1);
     Object.keys(TITLE_BTNS).forEach(k => { const r = TITLE_BTNS[k]; if (inRect(S.mouse, r)) brackets(r.x + r.w / 2, r.y + r.h / 2, r.w / 2 + 2, r.h / 2 + 2, C.hover); });
-    if (Math.floor(S.time * 2) % 2 === 0) text('MOUSE + KEYS (F FIGHT · R REROLL · M MUTE) · TOUCH: DRAG OR TAP', W / 2, 466, C.dim, 1, 'center');
+    text('자동 저장: 브라우저를 꺼도 [이어하기]로 계속할 수 있어요', W / 2, 414, '#9fd8a8', 1, 'center');
+    text('전투 중에 꺼지면 그 레벨의 준비 화면부터 다시 시작해요', W / 2, 428, C.dim, 1, 'center');
+    if (Math.floor(S.time * 2) % 2 === 0) text('키보드: F 전투 · R 새로고침 · M 소리  |  터치: 드래그 또는 탭', W / 2, 462, C.dim, 1, 'center');
   }
 
   function drawGameOver() {
@@ -2447,8 +2734,8 @@
     const f = S.final;
     const t = S.gameoverT;
     if (f.cleared) {
-      textStyled('CONGRATULATIONS!', W / 2, 140, NUM.banner, 3, 'center');
-      textStyled('ALL 999 LEVELS CLEARED', W / 2, 180, NUM.blue, 2, 'center');
+      textStyled('축하합니다!', W / 2, 140, NUM.banner, 3, 'center');
+      textStyled('999레벨 모두 클리어!', W / 2, 180, NUM.blue, 2, 'center');
     } else {
       // GAME OVER drops in with two bounces, then flickers
       const k = clamp(t / 0.6, 0, 1);
@@ -2457,14 +2744,14 @@
       spr('tx_gameover', W / 2, bounce, 2, flick ? { tint: 'w' } : undefined);
     }
     const shown = Math.floor(lerp(1, f.level, clamp((t - 0.6) / 0.8, 0, 1)));
-    text('LEVEL REACHED ' + pad3(shown), W / 2, 210, '#fff', 2, 'center');
+    text('도달 레벨 ' + pad3(shown), W / 2, 210, '#fff', 2, 'center');
     if (f.qualifies && t > 1.6) {
       const s = 2 + 0.1 * Math.abs(Math.sin(S.time * Math.PI * 2));
       spr('tx_top10', W / 2, 260, 2, { sx: s / 2, sy: s / 2 });
       if (Math.random() < 0.3 && t < 3.1) S.fx.push({ type: 'star', x: rand(160, 480), y: 230, vx: rand(-80, 80), vy: rand(-160, -60), t: 0, dur: 0.9 });
     }
     drawFxLayer(false);
-    if (t > 1.8 && !S.modal && (f.qualifies !== null || t > 6) && Math.floor(S.time * 2) % 2 === 0) text('TAP TO CONTINUE', W / 2, 300, C.gold, 2, 'center');
+    if (t > 1.8 && !S.modal && (f.qualifies !== null || t > 6) && Math.floor(S.time * 2) % 2 === 0) text('화면을 누르면 계속', W / 2, 300, C.gold, 2, 'center');
   }
 
   function drawWipe() {
@@ -2488,7 +2775,7 @@
 
   function drawLoading() {
     ctx.fillStyle = C.panel; ctx.fillRect(0, 0, W, H);
-    text(atlasState === 'error' ? 'SPRITES MISSING (SPRITES.PNG)' : 'LOADING...', W / 2, H / 2 - 7, atlasState === 'error' ? C.sel : C.text, 2, 'center');
+    text(atlasState === 'error' ? 'sprites.png 파일이 없어요' : '불러오는 중…', W / 2, H / 2 - 7, atlasState === 'error' ? C.sel : C.text, 2, 'center');
   }
 
   function render() {
@@ -2519,10 +2806,12 @@
     drawFloats();
     ctx.setTransform(1, 0, 0, 1, 0, 0);
 
+    drawBubbles();
     drawBossBar();
     drawBossIntro();
     drawFightSlam();
     drawCallout();
+    drawCutIn();
     drawConsoleBase();
     drawHUD();
     drawSynergy();
@@ -2569,6 +2858,8 @@
     if (S.heartFall) S.heartFall.t += rdt;
     if (S.shopSlide != null) S.shopSlide += rdt;
     if (S.hudPulse > 0) S.hudPulse -= rdt * 4;
+    if (S.saveT > 0) S.saveT -= rdt;
+    if (S.scene === 'battle' || S.scene === 'result') updateTalk(rdt);
     S.roster.forEach(u => { if (u.pop > 0) u.pop -= rdt; });
     if (S.scene !== 'title') updateAmbient(rdt);
     else {
@@ -2693,11 +2984,13 @@
         if (inRect(p, TITLE_BTNS.start, 4)) { Sound.play('select'); wipeTo(newGame); }
         else if (inRect(p, TITLE_BTNS.cont, 4) && S.hasSave) { Sound.play('select'); wipeTo(continueGame); }
         else if (inRect(p, TITLE_BTNS.rank, 4)) { Sound.play('select'); openRanking(); }
+        else if (inRect(p, TITLE_BTNS.help, 4)) { Sound.play('select'); UI.showHelp(); }
         else if (inRect(p, TITLE_BTNS.sound, 4)) { Sound.toggleMute(); Sound.play('click'); }
         else Sound.music('title');
         return;
 
       case 'prep': {
+        if (inRect(p, BTN_HELP, 3)) { Sound.play('select'); UI.showHelp(); return; }
         if (S.sel && S.sel.kind === 'roster' && inRect(p, BTN_SELL, 6)) { sell(S.sel.u); return; }
         if (inRect(p, BTN_REROLL, 2)) { reroll(); return; }
         if (inRect(p, BTN_ALTAR, 2)) { altar(); return; }
@@ -2802,6 +3095,7 @@
     if (S.wipe) return;
     const k = e.key.toLowerCase();
     if (k === 'm') { Sound.toggleMute(); return; }
+    if ((k === 'h' || k === '?') && (S.scene === 'title' || S.scene === 'prep')) { UI.showHelp(); return; }
     if (S.scene === 'title' && (k === 'enter' || k === ' ')) { wipeTo(newGame); e.preventDefault(); return; }
     if (S.scene === 'prep') {
       if (k === 'f' || k === 'enter' || k === ' ') { startBattle(); e.preventDefault(); }
@@ -2824,7 +3118,7 @@
   // =====================================================================
   const $ = id => document.getElementById(id);
   const UI = (() => {
-    const overlay = $('overlay'), entryModal = $('entryModal'), rankModal = $('rankModal');
+    const overlay = $('overlay'), entryModal = $('entryModal'), rankModal = $('rankModal'), helpModal = $('helpModal');
     const input = $('entryInput'), err = $('entryErr'), submitBtn = $('entrySubmit');
     const slots = Array.from(entryModal.querySelectorAll('.slot'));
     const A = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
@@ -2857,25 +3151,31 @@
     });
     submitBtn.addEventListener('click', submit);
     $('rankClose').addEventListener('click', closeRanking);
+    $('helpClose').addEventListener('click', closeHelp);
 
     function open(which) {
       S.modal = true;
       overlay.classList.remove('hidden');
       entryModal.classList.toggle('hidden', which !== 'entry');
       rankModal.classList.toggle('hidden', which !== 'rank');
+      helpModal.classList.toggle('hidden', which !== 'help');
     }
     function close() {
       overlay.classList.add('hidden');
       entryModal.classList.add('hidden');
       rankModal.classList.add('hidden');
+      helpModal.classList.add('hidden');
       S.modal = false;
     }
+
+    function showHelp() { if (S.modal) return; S.drag = null; open('help'); helpModal.scrollTop = 0; }
+    function closeHelp() { close(); Sound.play('click'); }
 
     function showEntry(lvl, isOnline) {
       level = lvl; online = isOnline;
       letters = ['A', 'A', 'A']; idx = 0; busy = false;
       $('entryLevel').textContent = pad3(lvl);
-      err.textContent = isOnline ? '' : 'OFFLINE: SCORE WILL BE SAVED LOCALLY';
+      err.textContent = isOnline ? '' : '오프라인: 이 기기에만 저장돼요';
       submitBtn.disabled = false;
       input.value = '';
       open('entry');
@@ -2886,25 +3186,25 @@
     async function submit() {
       if (busy) return;
       const initial = letters.join('');
-      if (!/^[A-Z]{3}$/.test(initial)) { err.textContent = 'EXACTLY 3 LETTERS A-Z'; Sound.play('error'); return; }
-      busy = true; submitBtn.disabled = true; err.textContent = 'SAVING...';
+      if (!/^[A-Z]{3}$/.test(initial)) { err.textContent = '영문 3글자를 입력하세요'; Sound.play('error'); return; }
+      busy = true; submitBtn.disabled = true; err.textContent = '저장 중…';
       const done = () => wipeTo(toTitle);
       try {
         if (!online) throw new Error('OFFLINE');
         const j = await API.post('submit_score', { initial, level });
         Sound.play('merge');
-        showRanking(j.rankings, j.top10 ? j.id : -1, j.top10 ? 'YOU ARE RANK #' + j.rank + '!' : 'RANK #' + j.rank, done);
+        showRanking(j.rankings, j.top10 ? j.id : -1, j.top10 ? j.rank + '위 달성!' : '현재 ' + j.rank + '위', done);
       } catch (e) {
         if (e.message === 'INVALID_INITIAL') {
-          err.textContent = 'INVALID INITIALS (A-Z ONLY)'; busy = false; submitBtn.disabled = false; Sound.play('error'); return;
+          err.textContent = '영문(A-Z)만 쓸 수 있어요'; busy = false; submitBtn.disabled = false; Sound.play('error'); return;
         }
         const rank = LocalRank.add(initial, level);
         // server error codes are UPPER_SNAKE; anything else (timeout, network, HTTP_5xx) = offline
         const code = /^[A-Z_]+$/.test(e.message) ? e.message : 'OFFLINE';
-        const why = code === 'OFFLINE' || code === 'DB_UNAVAILABLE' || code === 'BAD_RESPONSE' ? 'SERVER OFFLINE - SAVED LOCALLY'
-          : code === 'LEVEL_NOT_VERIFIED' ? 'RUN NOT VERIFIED - SAVED LOCALLY'
-          : 'NOT ACCEPTED (' + code + ') - SAVED LOCALLY';
-        showRanking(LocalRank.list(), -1, why + (rank ? ' (#' + rank + ')' : ''), done, rank);
+        const why = code === 'OFFLINE' || code === 'DB_UNAVAILABLE' || code === 'BAD_RESPONSE' ? '서버 연결 안 됨 · 이 기기에 저장'
+          : code === 'LEVEL_NOT_VERIFIED' ? '확인되지 않은 기록 · 이 기기에 저장'
+          : '등록 실패(' + code + ') · 이 기기에 저장';
+        showRanking(LocalRank.list(), -1, why + (rank ? ' (' + rank + '위)' : ''), done, rank);
       }
     }
 
@@ -2915,7 +3215,7 @@
       if (!list || !list.length) {
         const tr = document.createElement('tr');
         const td = document.createElement('td');
-        td.colSpan = 4; td.textContent = 'NO SCORES YET - BE THE FIRST!';
+        td.colSpan = 4; td.textContent = '아직 기록이 없어요. 첫 번째 주인공이 되어 보세요!';
         tr.appendChild(td); body.appendChild(tr);
       } else {
         list.slice(0, 10).forEach((r, i) => {
@@ -2941,6 +3241,10 @@
     }
 
     function onKey(e) {
+      if (!helpModal.classList.contains('hidden')) {
+        if (e.key === 'Escape' || e.key === 'Enter' || e.key === ' ' || e.key === 'h') { e.preventDefault(); closeHelp(); }
+        return;
+      }
       if (!rankModal.classList.contains('hidden')) {
         if (e.key === 'Escape' || e.key === 'Enter' || e.key === ' ') { e.preventDefault(); closeRanking(); }
         return;
@@ -2955,16 +3259,16 @@
       else if (k === 'Enter') { e.preventDefault(); submit(); }
     }
 
-    return { showEntry, showRanking, onKey };
+    return { showEntry, showRanking, showHelp, onKey };
   })();
 
   async function openRanking() {
-    UI.showRanking([], -1, 'LOADING...', null);
+    UI.showRanking([], -1, '불러오는 중…', null);
     try {
       const list = await API.rankings();
-      UI.showRanking(list, -1, 'ONLINE LEADERBOARD', null);
+      UI.showRanking(list, -1, '전체 순위', null);
     } catch (e) {
-      UI.showRanking(LocalRank.list(), -1, 'SERVER OFFLINE - LOCAL SCORES', null);
+      UI.showRanking(LocalRank.list(), -1, '서버 연결 안 됨 · 이 기기 기록', null);
     }
   }
 
