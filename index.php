@@ -6,6 +6,11 @@ $csrf = gt_csrf_token();
 header('Content-Type: text/html; charset=utf-8');
 header('X-Content-Type-Options: nosniff');
 
+// Fixed ad bar: 'top' or 'bottom' (the game always fills the rest of the screen).
+$adPosition = 'top';
+$adClient = 'ca-pub-4148146820367094';
+$adSlot = '6398772441';
+
 // Cache-busting query strings so redeploys are picked up immediately.
 $assetVer = (string) (@filemtime(__DIR__ . '/sprites.png') ?: '1');
 $v = static function (string $f): string {
@@ -47,10 +52,12 @@ $v = static function (string $f): string {
     font-family: 'GTK11', 'Malgun Gothic', 'Apple SD Gothic Neo', sans-serif;
   }
 
-  /* Layout: ad bar on top (10% of the screen height), the game fills the rest. */
-  :root { --ad-h: clamp(50px, 10vh, 120px); --gap: 6px; }
+  /* Layout: one fixed ad bar (top or bottom, 10% of the screen height); the game fills the rest.
+     game.js picks the layout from the space left: wide = 640x480, tall (phones) = 480 x 760~940. */
+  :root { --ad-h: clamp(50px, 10vh, 120px); --gap: 10px; }
   @supports (height: 100dvh) { :root { --ad-h: clamp(50px, 10dvh, 120px); } }
   body { display: flex; flex-direction: column; }
+  body.ad-bottom { flex-direction: column-reverse; }
 
   #top-ad-bar {
     flex: 0 0 var(--ad-h); height: var(--ad-h); width: 100%;
@@ -60,8 +67,10 @@ $v = static function (string $f): string {
   #top-ad-bar ins { width: 100%; height: 100%; }
 
   #game-area { flex: 1 1 auto; position: relative; min-height: 0; margin-top: var(--gap); }
+  body.ad-bottom #game-area { margin-top: 0; margin-bottom: var(--gap); }
 
-  /* 4:3 retro stage. PC: fixed 640x480 whenever it fits; smaller windows scale it down. */
+  /* Stage. game.js sets the exact size (640x480 wide layout, 480 x 760~940 tall layout);
+     these rules only cover the first frame. PC: 1:1 whenever it fits. */
   #stage {
     position: absolute; left: 50%; top: 50%;
     width: 640px; height: 480px;
@@ -84,7 +93,7 @@ $v = static function (string $f): string {
     cursor: pointer;
   }
 
-  /* Phones / tablets: no 640px cap, use all the space below the ad (4:3 kept). */
+  /* Phones / tablets: no 640px cap, use all the space next to the ad. */
   @media (pointer: coarse) {
     #stage {
       width: min(100vw, calc((100vh - var(--ad-h) - var(--gap)) * 4 / 3));
@@ -177,22 +186,19 @@ $v = static function (string $f): string {
   .help .btn { display: block; margin: 14px auto 0; }
   @media (max-width: 480px) { .modal { padding: 12px 10px; } .help ol, .help ul { padding-left: 22px; } }
 
-  #rotateHint {
-    position: fixed; left: 0; right: 0; bottom: 8px; text-align: center;
-    font-size: 12px; opacity: .6; pointer-events: none;
-  }
-  @media (orientation: landscape), (min-width: 701px) { #rotateHint { display: none; } }
   noscript { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; }
 </style>
-<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-4148146820367094" crossorigin="anonymous"></script>
+<?php /* Ad library WITHOUT "?client=": that parameter is the Auto ads tag. Only the one fixed
+         unit below is requested (Auto ads should also be off for this site in AdSense). */ ?>
+<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js" crossorigin="anonymous"></script>
 </head>
-<body>
-<!-- ── 상단 분리형 광고 프레임 (게임과 독립, 전체 높이의 10%) ── -->
+<body class="<?= $adPosition === 'bottom' ? 'ad-bottom' : 'ad-top' ?>">
+<!-- ── 고정 광고 프레임 (게임과 분리, 화면 높이의 10%, 위 또는 아래) ── -->
 <div id="top-ad-bar" aria-label="광고">
   <ins class="adsbygoogle"
        style="display:block;width:100%;height:100%"
-       data-ad-client="ca-pub-4148146820367094"
-       data-ad-slot="6398772441"
+       data-ad-client="<?= htmlspecialchars($adClient, ENT_QUOTES, 'UTF-8') ?>"
+       data-ad-slot="<?= htmlspecialchars($adSlot, ENT_QUOTES, 'UTF-8') ?>"
        data-ad-format="horizontal"
        data-full-width-responsive="true"></ins>
 </div>
@@ -201,7 +207,6 @@ $v = static function (string $f): string {
     <canvas id="screen" width="640" height="480" aria-label="Ghost-Tactics game screen"></canvas>
   </div>
 </div>
-<div id="rotateHint">기기를 가로로 돌리면 더 크게 보여요</div>
 
 <div id="overlay" class="hidden">
   <!-- High-score initial entry -->
@@ -237,8 +242,8 @@ $v = static function (string $f): string {
     <h2 id="helpTitle">게임 방법</h2>
     <h3>▶ 플레이</h3>
     <ol>
-      <li><b>카드</b>를 눌러 유령 구매 (대기석 16칸)</li>
-      <li>유령을 <b>왼쪽 진영(3×5)</b>에 배치<br>(끌어다 놓거나, 누르고 칸 누르기)</li>
+      <li><b>카드</b>를 눌러 유령 구매 (대기석 8칸)</li>
+      <li>유령을 <b>내 진영(3×5)</b>에 배치 · 세로 화면은 <b>아래쪽</b>, 가로 화면은 <b>왼쪽</b><br>(끌어다 놓거나, 누르고 칸 누르기)</li>
       <li><b>공격 범위</b>가 옅게 보여요<br>주황 = 근접 · 파랑 = 원거리</li>
       <li><b>[전투 시작!]</b> → 자동 전투</li>
     </ol>
@@ -256,7 +261,9 @@ $v = static function (string $f): string {
       <li>적 색깔 = 등급: <b style="color:#58b8ff">정예</b> · <b style="color:#c080ff">용사</b> · <b style="color:#ffc830">전설</b></li>
       <li>위험 기술: <b style="color:#a8e8ff">빙결</b>(얼음) · <b style="color:#7ad04a">독안개</b> · <b style="color:#ff7a2a">지옥불</b>(빨간 표시 1초 뒤 폭발) · <b style="color:#ff4060">공포의 포효</b></li>
       <li>지옥불·독안개는 <b>뭉쳐 있을수록 위험</b> → 흩어서 배치! (준비 화면 오른쪽에 경고가 떠요)</li>
-      <li>보스는 체력이 절반이 되면 <b>광폭화</b></li>
+      <li>적 <b>기술 레벨</b>은 5레벨마다 올라요 (보스·전설 +1): 얼리는 시간·독·공포가 길어지고, <b>Lv.6부터 운석 2개, Lv.12부터 3개</b></li>
+      <li>보스는 체력이 절반이 되면 <b>광폭화</b> · 적을 누르면 한마디 해요</li>
+      <li>아군이 위험하면 화면 가장자리가 <b>붉게 뛰어요</b> (심장 소리)</li>
     </ul>
     <h3>▶ 주의: 영구 소멸</h3>
     <ul>
@@ -277,7 +284,12 @@ $v = static function (string $f): string {
 
 <noscript>자바스크립트를 켜야 플레이할 수 있어요.</noscript>
 
-<script>try { (window.adsbygoogle = window.adsbygoogle || []).push({}); } catch (e) { /* ad blocked */ }</script>
+<script>
+  // Page-level (Auto) ads off for this page; then fill the single fixed unit.
+  window.adsbygoogle = window.adsbygoogle || [];
+  try { window.adsbygoogle.push({ google_ad_client: <?= json_encode($adClient) ?>, enable_page_level_ads: false }); } catch (e) { /* already configured */ }
+  try { window.adsbygoogle.push({}); } catch (e) { /* ad blocked */ }
+</script>
 <script>window.GT_ASSET_VER = <?= json_encode($assetVer) ?>;</script>
 <script src="<?= htmlspecialchars($v('sprites.js'), ENT_QUOTES, 'UTF-8') ?>"></script>
 <script src="<?= htmlspecialchars($v('sound.js'), ENT_QUOTES, 'UTF-8') ?>"></script>
