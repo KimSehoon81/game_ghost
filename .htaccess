@@ -16,6 +16,7 @@ Options -Indexes
 <IfModule mod_mime.c>
     AddType application/javascript .js
     AddType image/webp .webp
+    AddType font/woff2 .woff2
 </IfModule>
 
 # Long-lived caching for the versioned atlas (URLs carry ?v=<mtime>)
@@ -23,6 +24,7 @@ Options -Indexes
     ExpiresActive On
     ExpiresByType image/webp "access plus 30 days"
     ExpiresByType image/png "access plus 30 days"
+    ExpiresByType font/woff2 "access plus 30 days"
 </IfModule>
 
 # Compress text assets (game.js ~138 KB -> ~41 KB on the wire)

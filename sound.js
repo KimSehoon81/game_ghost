@@ -510,12 +510,22 @@
       tone(120, t + .05, 1, .1, 30, null, { det: 25 });
     },
     wipe: t => noise(t, .38, .2, 300, null, { to: 7000, a: .16 }),
+    // --- atmosphere
+    taunt: t => { tone(300, t, .12, .1, 180, null, { lfo: [18, 30] }); tone(220, t + .1, .16, .09, 140, null, { lfo: [14, 25] }); },
+    meteorfall: t => { noise(t, .9, .18, 5000, null, { type: 'lowpass', to: 300, a: .25 }); tone(900, t, .9, .06, 120); },
+    thunder: t => {
+      noise(t, .07, .28, 4000);
+      noise(t + .06, 1.4, .3, 1200, null, { type: 'lowpass', to: 80, q: 1, a: .03, am: [7, .5] });
+      tone(55, t + .06, .8, .12, 35);
+    },
+    heartbeat: t => { tone(70, t, .09, .3, 45); tone(62, t + .17, .11, .24, 40); },
+    portal: t => { tone(160, t, .35, .06, 640, null, { lfo: [20, 40] }); noise(t, .3, .05, 2500, null, { type: 'bandpass', q: 6 }); },
     heartbreak: t => { noise(t, .05, .2, 3000); tone(1200, t, .04, .12, 600); tone(523, t + .06, .45, .15, 196, null, { lfo: [7, 12] }); }
   };
 
   // ------------------------------------------------------------ sfx mixer
   const MAXV = 8;
-  const BIG = { crit: 1, kill: 1, execute: 1, deathnote: 1, slowmo: 1 };        // bypass the throttle
+  const BIG = { crit: 1, kill: 1, execute: 1, deathnote: 1, slowmo: 1, thunder: 1 };   // bypass the throttle
   const KEEP = { fight: 1, victory: 1, defeat: 1, gameover: 1, highscore: 1, stageclear: 1,
     zonefanfare: 1, top10: 1, levelup: 1, bossroar: 1 };                        // never voice-stolen
   let voices = [], lastBig = -1;

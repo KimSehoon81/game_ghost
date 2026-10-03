@@ -14,7 +14,7 @@ if (realpath($_SERVER['SCRIPT_FILENAME'] ?? '') === __FILE__) {
     exit;
 }
 
-define('DB_HOST', getenv('GT_DB_HOST') ?: '127.0.0.1');
+define('DB_HOST', getenv('GT_DB_HOST') ?: 'localhost');
 define('DB_PORT', (int) (getenv('GT_DB_PORT') ?: 3306));
 define('DB_NAME', getenv('GT_DB_NAME') ?: 'ghost_tactics');
 define('DB_USER', getenv('GT_DB_USER') ?: 'root');
@@ -26,6 +26,8 @@ define('GT_AUTO_MIGRATE', true);
 
 define('GT_MAX_LEVEL', 999);
 define('GT_TOP_N', 10);
+// Minimum seconds per level a run may advance (the fastest real win is ~1.6 s).
+define('GT_ADV_MIN_S', 1.0);
 
 /**
  * Shared PDO instance (lazy). Throws PDOException on failure.
@@ -67,9 +69,17 @@ function gt_db(): PDO
 
 /**
  * Idempotent schema creation (kept in sync with db.sql).
+ * Only one auto-updated TIMESTAMP per table, so MySQL / MariaDB 5.5 accept it.
  */
-function gt_migrate(PDO $pdo): void
+function gt_migrate(PDO $pdo)
 {
+    // Cheap probe first: no DDL per request, and a DB user without CREATE works once installed.
+    try {
+        $pdo->query('SELECT 1 FROM `user_progress`, `rankings` LIMIT 0');
+        return;
+    } catch (PDOException $e) {
+        // a table is missing: create it below
+    }
     $pdo->exec(
         'CREATE TABLE IF NOT EXISTS `user_progress` (
             `id`          INT UNSIGNED     NOT NULL AUTO_INCREMENT,
@@ -80,7 +90,7 @@ function gt_migrate(PDO $pdo): void
             `power`       INT              NOT NULL DEFAULT 0,
             `best_level`  INT              NOT NULL DEFAULT 1,
             `team_json`   TEXT             NULL,
-            `created_at`  TIMESTAMP        NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            `created_at`  TIMESTAMP        NULL DEFAULT NULL,
             `updated_at`  TIMESTAMP        NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
             PRIMARY KEY (`id`),
             UNIQUE KEY `uq_player` (`player_id`)
@@ -98,19 +108,25 @@ function gt_migrate(PDO $pdo): void
     );
 }
 
-function gt_session_start(): void
+function gt_session_start()
 {
     if (session_status() === PHP_SESSION_ACTIVE) {
         return;
     }
     session_name('GTSESSID');
-    session_set_cookie_params([
-        'lifetime' => 0,
-        'path'     => '/',
-        'secure'   => !empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off',
-        'httponly' => true,
-        'samesite' => 'Lax',
-    ]);
+    $secure = !empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off';
+    if (PHP_VERSION_ID >= 70300) {
+        session_set_cookie_params([
+            'lifetime' => 0,
+            'path'     => '/',
+            'secure'   => $secure,
+            'httponly' => true,
+            'samesite' => 'Lax',
+        ]);
+    } else {
+        // PHP 7.0-7.2: no SameSite option (browsers treat the cookie as Lax by default).
+        session_set_cookie_params(0, '/', '', $secure, true);
+    }
     session_start();
 }
 

@@ -3,6 +3,7 @@
  * Ghost-Tactics :: JSON API
  *
  *   GET  save.php?action=rankings                 -> top 10 leaderboard
+ *   GET  save.php?action=token                    -> fresh CSRF token (after the session expired)
  *   POST save.php  {action:"rankings"}            -> same
  *   POST save.php  {action:"new_game"}            -> reset the run in this session
  *   POST save.php  {action:"save_progress", player_id, level, gold, lives, power, state}
@@ -23,20 +24,21 @@ header('X-Content-Type-Options: nosniff');
 
 gt_session_start();
 
-function respond(array $data, int $code = 200): void
+// (No void / nullable return types: the API runs on PHP 7.0+.)
+function respond(array $data, int $code = 200)
 {
     http_response_code($code);
     echo json_encode($data, JSON_UNESCAPED_SLASHES);
     exit;
 }
 
-function fail(string $error, int $code = 400): void
+function fail(string $error, int $code = 400)
 {
     respond(['ok' => false, 'error' => $error], $code);
 }
 
 /** Strict integer in [min,max], or null. Accepts ints and digit strings only. */
-function int_in($v, int $min, int $max): ?int
+function int_in($v, int $min, int $max)
 {
     if (is_int($v)) {
         $n = $v;
@@ -50,7 +52,8 @@ function int_in($v, int $min, int $max): ?int
     return ($n >= $min && $n <= $max) ? $n : null;
 }
 
-function valid_player_id($v): ?string
+/** 32 lowercase hex chars, or null. */
+function valid_player_id($v)
 {
     return (is_string($v) && preg_match('/^[a-f0-9]{32}$/D', $v)) ? $v : null;
 }
@@ -58,7 +61,7 @@ function valid_player_id($v): ?string
 function fetch_top(PDO $db): array
 {
     $stmt = $db->query(
-        'SELECT id, initial, level_reached, DATE_FORMAT(created_at, "%Y-%m-%d") AS created_at
+        'SELECT id, initial, level_reached, DATE_FORMAT(created_at, \'%Y-%m-%d\') AS created_at
            FROM rankings
           ORDER BY level_reached DESC, created_at ASC, id ASC
           LIMIT ' . (int) GT_TOP_N
@@ -78,6 +81,10 @@ $in = [];
 
 if ($method === 'GET') {
     $action = (string) ($_GET['action'] ?? 'rankings');
+    if ($action === 'token') {
+        // Same-origin JSON only (no CORS), so other sites cannot read it.
+        respond(['ok' => true, 'token' => gt_csrf_token()]);
+    }
     if ($action !== 'rankings') {
         fail('METHOD_NOT_ALLOWED', 405);
     }
@@ -114,6 +121,7 @@ try {
         // ------------------------------------------------------ new run
         case 'new_game':
             $_SESSION['gt_run_level'] = 1;
+            $_SESSION['gt_run_t'] = microtime(true);
             respond(['ok' => true]);
             break;
 
@@ -135,22 +143,36 @@ try {
 
             $db = gt_db();
 
-            // Progression guard: a run may only advance one level per save.
+            // Progression guard: a run gains at most one level per GT_ADV_MIN_S
+            // seconds (a real battle takes longer). Skipping k levels at once
+            // (saves lost while offline) needs k * GT_ADV_MIN_S since the last
+            // accepted advance, so forged saves can never outpace real play.
+            $now = microtime(true);
             $run = $_SESSION['gt_run_level'] ?? null;
-            if ($run === null) {
-                $q = $db->prepare('SELECT level FROM user_progress WHERE player_id = ?');
+            $since = $_SESSION['gt_run_t'] ?? null;
+            if ($run === null || $since === null) {
+                // Fresh session (expired cookie): resume from the stored run.
+                $q = $db->prepare('SELECT level, UNIX_TIMESTAMP(updated_at) AS t FROM user_progress WHERE player_id = ?');
                 $q->execute([$pid]);
-                $known = $q->fetchColumn();
-                $run = $known !== false ? (int) $known : 1;
+                $known = $q->fetch();
+                if ($run === null) {
+                    $run = $known ? (int) $known['level'] : 1;
+                }
+                $since = $known ? min((float) $known['t'], $now) : $now;
             }
-            if ($level > $run + 1) {
-                fail('PROGRESS_REJECTED', 409);
+            $run = (int) $run;
+            $steps = $level - $run;
+            if ($steps > 0 && $now - (float) $since < $steps * GT_ADV_MIN_S) {
+                fail($steps === 1 ? 'TOO_FAST' : 'PROGRESS_REJECTED', $steps === 1 ? 429 : 409);
+            }
+            if ($steps > 0 || !isset($_SESSION['gt_run_t'])) {
+                $_SESSION['gt_run_t'] = $steps > 0 ? $now : (float) $since;
             }
             $_SESSION['gt_run_level'] = $level;
 
             $stmt = $db->prepare(
-                'INSERT INTO user_progress (player_id, level, gold, lives, power, best_level, team_json)
-                 VALUES (:pid, :lvl, :gold, :lives, :power, :lvl2, :team)
+                'INSERT INTO user_progress (player_id, level, gold, lives, power, best_level, team_json, created_at)
+                 VALUES (:pid, :lvl, :gold, :lives, :power, :lvl2, :team, NOW())
                  ON DUPLICATE KEY UPDATE
                     level = VALUES(level), gold = VALUES(gold), lives = VALUES(lives),
                     power = VALUES(power), team_json = VALUES(team_json),
@@ -179,6 +201,7 @@ try {
                 respond(['ok' => true, 'progress' => null]);
             }
             $_SESSION['gt_run_level'] = (int) $row['level'];
+            $_SESSION['gt_run_t'] = microtime(true);
             respond(['ok' => true, 'progress' => [
                 'level'      => (int) $row['level'],
                 'gold'       => (int) $row['gold'],
