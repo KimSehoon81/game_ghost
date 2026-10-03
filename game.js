@@ -19,10 +19,10 @@
   //  LAYOUT (logical 640x480)
   // =====================================================================
   const W = 640, H = 480;
-  const ROWS = 3, COLS = 6, PCOLS = 3;
-  const BOARD_X = 80, BOARD_Y = 116, CELL_W = 80, CELL_H = 64;
+  const ROWS = 3, COLS = 10, PCOLS = 5;          // 3x5 per side: player up to 9 units, enemies up to 15
+  const BOARD_X = 4, BOARD_Y = 116, CELL_W = 56, CELL_H = 64;
   const STAGE_Y = 28, CONSOLE_Y = 308, FLOOR_Y = 205;
-  const BENCH_N = 8, BENCH_X = 66, BENCH_Y = 314, SLOT_W = 60, SLOT_H = 52, SLOT_GAP = 64;
+  const BENCH_N = 16, BENCH_X = 60, BENCH_Y = 313, SLOT_W = 34, SLOT_H = 52, SLOT_GAP = 36;
   const SHOP_N = 5, SHOP_X = 8, SHOP_Y = 372, CARD_W = 90, CARD_H = 104, CARD_GAP = 96;
   const BTN_REROLL = { x: 492, y: 372, w: 68, h: 48 };
   const BTN_ALTAR = { x: 564, y: 372, w: 68, h: 48 };
@@ -33,9 +33,9 @@
   const BTN_SOUND = { x: 596, y: 3, w: 40, h: 22 };
   const BTN_HELP = { x: 552, y: 3, w: 30, h: 22 };
   const HIT_SOUND = { x: 586, y: 0, w: 54, h: 30 };
-  const SYN = { x: 2, y: 116, w: 76, h: 192 };
-  const INFO = { x: 562, y: 116, w: 76, h: 192 };
-  const BTN_SELL = { x: 566, y: 268, w: 68, h: 36 };
+  const SYN = { x: 4, y: 31, w: 168, h: 42 };     // synergy strip over the sky
+  const INFO = { x: 566, y: 116, w: 72, h: 192 };
+  const BTN_SELL = { x: 569, y: 268, w: 66, h: 36 };
 
   // palette tokens sampled from the sheet
   const C = {
@@ -408,6 +408,7 @@
       atlas = img;
       TINT.w = tintCanvas('#ffffff'); TINT.r = tintCanvas('#ff3030');
       TINT.p = tintCanvas('#e060a0'); TINT.v = tintCanvas('#9060ff'); TINT.k = tintCanvas('#000000');
+      TINT.b = tintCanvas('#3ca0ff'); TINT.g = tintCanvas('#ffc020'); TINT.i = tintCanvas('#b8f0ff');
       atlasState = 'ready';
       zoneLayer = null;
     };
@@ -484,27 +485,43 @@
     wolf: { name: '늑대', face: 1 }, ogre: { name: '오우거', face: 0 }, demon: { name: '악마', face: 0 }, dragon: { name: '드래곤', face: -1 }
   };
 
+  // Deadly enemy-only skills: each zone owns two, bosses always know the first one.
+  const ESK = {
+    frost: { name: '빙결', color: '#a8e8ff', line: '얼어붙어라!', desc: '대상 주변 적을 얼려 약 2초간 이동·공격·기술 봉쇄' },
+    poison: { name: '독안개', color: '#7ad04a', line: '썩어 문드러져라…', desc: '대상 주변 3x3에 독안개. 5초간 큰 지속 피해' },
+    meteor: { name: '지옥불 낙하', color: '#ff7a2a', line: '불타 없어져라!', desc: '1초 뒤 가장 붐비는 3x3에 240% 폭발 + 화상' },
+    roar: { name: '공포의 포효', color: '#ff4060', line: '크아아앙!!', desc: '주변 2칸 적 기절 + 4초간 공격력 -30%' }
+  };
+  const skillName = u => (u.eskill ? ESK[u.eskill].name : u.def.skill);
+
   // =====================================================================
   //  STAGES (sheet: GRAVEYARD 1~, CASTLE 50~, FOREST 100~, ORIENTAL 200~, HELL 500~)
   // =====================================================================
   const ZONES = [
     { id: 'graveyard', name: '묘지', from: 1, bg: 'bg_graveyard', tile: 'tl_stone', wash: 'rgba(30,60,140,0.22)',
       props: [['pr_deadtree', 40, 116, 1], ['pr_tomb', 604, 114, 1], ['ob_crow', 46, 62, 1]], amb: 'fog',
-      skins: { tank: 'zombie', melee: 'skeleton', ranged: 'ghost', boss: 'ogre', bossName: '무덤 오우거' } },
+      skins: { tank: 'zombie', melee: 'skeleton', ranged: 'ghost', boss: 'ogre', bossName: '무덤 오우거' }, eskills: ['poison', 'roar'] },
     { id: 'castle', name: '고성', from: 50, bg: 'bg_castle', tile: 'tl_brick', wash: 'rgba(58,32,96,0.30)',
       props: [['pr_pillar', 30, 116, 1], ['pr_pillar', 610, 116, 1]], amb: 'bats',
-      skins: { tank: 'skeleton', melee: 'wolf', ranged: 'bat', boss: 'demon', bossName: '고성의 군주' } },
+      skins: { tank: 'skeleton', melee: 'wolf', ranged: 'bat', boss: 'demon', bossName: '고성의 군주' }, eskills: ['frost', 'roar'] },
     { id: 'forest', name: '숲', from: 100, bg: 'bg_forest', tile: 'tl_grass', wash: 'rgba(10,40,20,0.20)',
       props: [['ob_tree', 40, 116, 1], ['ob_bush', 600, 114, 1], ['ob_rabbit', 618, 114, 1]], amb: 'fireflies',
-      skins: { tank: 'slime', melee: 'wolf', ranged: 'spider', boss: 'ogre', bossName: '숲의 트롤' } },
+      skins: { tank: 'slime', melee: 'wolf', ranged: 'spider', boss: 'ogre', bossName: '숲의 트롤' }, eskills: ['roar', 'poison'] },
     { id: 'oriental', name: '동양 사원', from: 200, bg: 'bg_oriental', tile: 'tl_sand', wash: 'rgba(20,30,90,0.26)',
       props: [['pr_torii', 40, 114, 1], ['pr_lantern', 604, 112, 1]], amb: 'petals',
-      skins: { tank: 'zombie', melee: 'ogre', ranged: 'ghost', boss: 'dragon', bossName: '이무기' } },
+      skins: { tank: 'zombie', melee: 'ogre', ranged: 'ghost', boss: 'dragon', bossName: '이무기' }, eskills: ['frost', 'meteor'] },
     { id: 'hell', name: '지옥', from: 500, bg: 'bg_hell', tile: 'tl_dark', wash: 'rgba(90,10,10,0.24)',
       props: [['pr_pillar', 30, 116, 1], ['pr_pillar', 610, 116, 1]], amb: 'embers',
-      skins: { tank: 'ogre', melee: 'demon', ranged: 'bat', boss: 'dragon', bossName: '지옥룡' } }
+      skins: { tank: 'ogre', melee: 'demon', ranged: 'bat', boss: 'dragon', bossName: '지옥룡' }, eskills: ['meteor', 'frost'] }
   ];
-  const zoneOf = L => (L >= 500 ? ZONES[4] : L >= 200 ? ZONES[3] : L >= 100 ? ZONES[2] : L >= 50 ? ZONES[1] : ZONES[0]);
+  // the stage changes every 5 levels (graveyard -> castle -> forest -> oriental -> hell -> ...);
+  // each 25-level lap gets its own colour mood so repeats never look the same
+  const zoneOf = L => ZONES[Math.floor((Math.max(1, L) - 1) / 5) % ZONES.length];
+  const ZONE_MOODS = [null,
+    { pre: '핏빛 ', wash: 'rgba(150,0,24,0.20)' }, { pre: '독기의 ', wash: 'rgba(40,150,40,0.17)' },
+    { pre: '심연의 ', wash: 'rgba(70,0,130,0.24)' }, { pre: '황금빛 ', wash: 'rgba(210,150,20,0.15)' }];
+  const zoneMood = L => ZONE_MOODS[Math.floor((Math.max(1, L) - 1) / 25) % ZONE_MOODS.length];
+  const zoneName = L => (zoneMood(L) ? zoneMood(L).pre : '') + zoneOf(L).name;
 
   // =====================================================================
   //  PROCEDURAL LEVELS (no maps stored anywhere)
@@ -513,44 +530,80 @@
     const L = clamp(level | 0, 1, MAX_LEVEL);
     return { hp: Math.pow(HP_GROWTH, L), atk: Math.pow(ATK_GROWTH, L) };
   }
-  // Exact PRD formula: HP = BaseHP * 1.045^L, ATK = BaseATK * 1.038^L
-  function enemyBase(def, boss) {
-    return { hp: def.hp * ENEMY_BASE * (boss ? BOSS_HP : 1), atk: def.atk * ENEMY_BASE * (boss ? BOSS_ATK : 1) };
+  // Exact PRD formula: HP = BaseHP * 1.045^L, ATK = BaseATK * 1.038^L.
+  // BaseHP/ATK depend on the enemy: spirit's base * 0.8, x grade (tier), and bosses carry
+  // their own base that grows with every boss wave (x3 HP / x1.5 ATK at the first one).
+  const TIER_HP = [1, 1.35, 1.8, 2.5], TIER_ATK = [1, 1.15, 1.35, 1.6];
+  const TIER_NAME = ['일반', '정예', '용사', '전설'];
+  const TIER_COLOR = ['#c2d3f2', '#58b8ff', '#c080ff', '#ffc830'];
+  const TIER_TINT = [null, 'b', 'v', 'g'];
+  function enemyBase(def, boss, tier, level, mini) {
+    let hp = def.hp * ENEMY_BASE, atk = def.atk * ENEMY_BASE;
+    if (boss) {   // boss: true = lead boss, 'guard' = lesser boss of a multi-boss wave
+      const k = Math.max(1, Math.floor((level || 5) / 5));   // n-th boss wave
+      const lesser = mini || boss === 'guard';
+      hp *= BOSS_HP * (1 + 0.06 * (k - 1)) * (lesser ? 0.55 : 1);
+      atk *= BOSS_ATK * (1 + 0.04 * (k - 1)) * (lesser ? 0.75 : 1);
+    }
+    return { hp: hp * TIER_HP[tier || 0], atk: atk * TIER_ATK[tier || 0] };
   }
-  function enemyStats(def, level, boss) {
-    const b = enemyBase(def, boss), m = levelMultipliers(level);
+  function enemyStats(def, level, boss, tier, mini) {
+    const b = enemyBase(def, boss, tier, level, mini), m = levelMultipliers(level);
     return { baseHp: b.hp, baseAtk: b.atk, hp: b.hp * m.hp, atk: b.atk * m.atk };
   }
-  const squadSize = L => Math.min(9, 1 + Math.ceil(L / 2));
-  const playerCap = L => squadSize(L);
-  const isBossLevel = L => L % 10 === 0;
+  const waveSize = L => Math.min(PCOLS * ROWS, 2 + Math.floor(L * 0.45));  // enemies: up to 15 (level 29)
+  const playerCap = L => Math.min(9, 3 + Math.floor(L / 3));               // you: up to 9 (level 18)
+  const isBossLevel = L => L % 5 === 0;
+  const bossCount = L => (isBossLevel(L) ? Math.min(7, 2 + Math.floor(L / 15)) : L >= 61 ? 2 : L >= 21 ? 1 : 0);   // 2..7 bosses
 
   // Deterministic wave for a level (same level => same formation).
+  // Bosses stand in front, ranged spirits in the back; grades (tiers) get likelier with level
+  // and some enemies swap their spirit skill for one of the zone's deadly skills.
   function genWave(level) {
     const rng = mulberry32((Math.imul(level, 2654435761) ^ 0x5bd1e995) >>> 0);
-    const n = squadSize(level);
+    const n = waveSize(level);
     const maxCost = level < 3 ? 2 : level < 6 ? 3 : 4;
     const pool = GHOSTS.filter(g => g.cost <= maxCost);
     const zone = zoneOf(level);
     const used = {};
     const wave = [];
-    for (let i = 0; i < n; i++) {
-      const def = pool[Math.floor(rng() * pool.length)];
-      const prefs = def.range > 1 ? [5, 4, 3] : [3, 4, 5];
+    const cols = []; for (let c = PCOLS; c < COLS; c++) cols.push(c);   // front -> back
+    const spot = front => {
+      const order = front ? cols : cols.slice().reverse();
       const rows = [0, 1, 2];
       for (let k = 2; k > 0; k--) { const j = Math.floor(rng() * (k + 1)); const t = rows[k]; rows[k] = rows[j]; rows[j] = t; }
-      let placed = false;
-      for (const c of prefs) {
-        for (const r of rows) {
-          if (!used[r + ',' + c]) { used[r + ',' + c] = 1; wave.push({ def, r, c, boss: false, skin: zone.skins[def.cls] }); placed = true; break; }
-        }
-        if (placed) break;
+      for (const c of order) for (const r of rows) if (!used[r + ',' + c]) { used[r + ',' + c] = 1; return { r, c }; }
+      return null;
+    };
+    const tierRoll = () => {
+      const x = rng();
+      const legend = Math.min(0.18, Math.max(0, (level - 40) * 0.005));
+      const champ = Math.min(0.3, Math.max(0, (level - 12) * 0.008));
+      const elite = Math.min(0.45, level * 0.01);
+      return x < legend ? 3 : x < legend + champ ? 2 : x < legend + champ + elite ? 1 : 0;
+    };
+    const nb = Math.min(n, bossCount(level));
+    const bossTier = Math.min(3, Math.floor((Math.floor(level / 5) - 1) / 2));
+    for (let i = 0; i < n; i++) {
+      const boss = i < nb;
+      const def = pool[Math.floor(rng() * pool.length)];
+      const at = spot(boss || def.range === 1);
+      if (!at) break;
+      const e = { def, r: at.r, c: at.c, boss, mini: boss && !isBossLevel(level), guard: boss && i > 0, tier: 0, skin: zone.skins[def.cls], eskill: null };
+      if (boss) {
+        e.skin = zone.skins.boss;
+        e.tier = Math.max(0, Math.min(3, bossTier + (i === 0 && level >= 30 ? 1 : 0) - (e.mini ? 1 : 0)));
+        e.eskill = i === 0 ? zone.eskills[0] : i === 1 ? zone.eskills[1] : rng() < 0.5 ? zone.eskills[i % 2] : null;   // varied boss skills
+        e.big = i === 0 && level % 25 === 0;             // lap finale: the lead boss is giant
+      } else {
+        e.tier = tierRoll();
+        const special = level >= 3 && (e.tier > 0 ? rng() < 0.4 : level >= 30 && rng() < 0.2);
+        if (special) e.eskill = zone.eskills[Math.floor(rng() * zone.eskills.length)];
       }
+      wave.push(e);
     }
-    if (isBossLevel(level) && wave.length) {
-      const b = wave.reduce((a, x) => (x.def.hp > a.def.hp ? x : a));
-      b.boss = true; b.skin = zone.skins.boss;
-    }
+    // from level 3 on, every wave shows at least one deadly skill
+    if (level >= 3 && wave.length && !wave.some(e => e.eskill)) wave[wave.length - 1].eskill = zone.eskills[level % zone.eskills.length];
     return wave;
   }
 
@@ -588,7 +641,7 @@
     msg: '', msgT: 0, modal: false, final: null, gameoverT: 0, hasSave: false,
     wipe: null, zoneCard: null, coins: [], goldShown: START_GOLD, hudPulse: 0,
     skillCount: {},
-    bubbles: [], cutin: null, cutSeen: {}, cutCd: 0, saveT: 0, quits: 0
+    bubbles: [], cutin: null, cutSeen: {}, cutCd: 0, saveT: 0, quits: 0, meteors: [], bosses: []
   };
   S.best = parseInt(store.get('gt_best') || '0', 10) || 0;
   const PID = playerId();
@@ -714,7 +767,7 @@
   const countCopies = (id, star) => S.roster.filter(u => u.id === id && u.star === star).length;
 
   function findBoardSpot(def) {
-    const cols = def.range > 1 ? [0, 1, 2] : [2, 1, 0];
+    const cols = def.range > 1 ? [0, 1, 2, 3, 4] : [4, 3, 2, 1, 0];
     for (const c of cols) for (const r of [1, 0, 2]) if (!rosterAtCell(r, c)) return { r, c };
     return null;
   }
@@ -759,6 +812,7 @@
     if (S.drag && gone.indexOf(S.drag.u) >= 0) S.drag = null;
     if (S.sel && gone.indexOf(S.sel.u) >= 0) S.sel = { kind: 'roster', u: keep };
     if (keep.slot === -99) keep.slot = Math.max(0, freeSlot());
+    keep.deaths = Math.min(keep.deaths | 0, ...gone.map(g => g.deaths | 0));   // a fresh copy heals the wound
     keep.star = star + 1;
     keep.pop = 0.3;
     Sound.play('merge');
@@ -865,7 +919,7 @@
   function serialize(over) {
     return Object.assign({
       v: 2, t: Date.now(), level: S.level, gold: S.gold, lives: S.lives, power: S.power, quits: S.quits | 0,
-      roster: S.roster.map(u => ({ id: u.id, star: u.star, loc: u.loc, r: u.r, c: u.c, slot: u.slot })),
+      roster: S.roster.map(u => ({ id: u.id, star: u.star, loc: u.loc, r: u.r, c: u.c, slot: u.slot, deaths: u.deaths | 0 })),
       shop: S.shop
     }, over || {});
   }
@@ -884,7 +938,7 @@
     const taken = {};
     (Array.isArray(st.roster) ? st.roster : []).forEach(x => {
       if (!x || !GMAP[x.id]) return;
-      const u = { uid: uidSeq++, id: x.id, star: clamp(x.star | 0, 1, 3), loc: x.loc === 'board' ? 'board' : 'bench', r: x.r | 0, c: x.c | 0, slot: x.slot | 0, pop: 0 };
+      const u = { uid: uidSeq++, id: x.id, star: clamp(x.star | 0, 1, 3), loc: x.loc === 'board' ? 'board' : 'bench', r: x.r | 0, c: x.c | 0, slot: x.slot | 0, pop: 0, deaths: clamp(x.deaths | 0, 0, 1) };
       const key = u.loc === 'board' ? 'b' + u.r + ',' + u.c : 's' + u.slot;
       const bad = u.loc === 'board' ? (u.r < 0 || u.r >= ROWS || u.c < 0 || u.c >= PCOLS) : (u.slot < 0 || u.slot >= BENCH_N);
       if (bad || taken[key]) return;
@@ -997,19 +1051,27 @@
     const syn = synergy(board);
     board.forEach(u => {
       const st = playerStats(u.id, u.star, syn);
-      spawnUnit(GMAP[u.id], u.star, 'P', u.r, u.c, st.hp, st.atk, false, null);
+      const b = spawnUnit(GMAP[u.id], u.star, 'P', u.r, u.c, st.hp, st.atk, false, null);
+      b.ref = u; b.wounded = u.deaths | 0;
     });
+    // enemies get a little better every level: skill damage, crowd-control time and mana gain
+    const L = S.level;
     S.wave.forEach(e => {
-      const st = enemyStats(e.def, S.level, e.boss);
-      spawnUnit(e.def, 1, 'E', e.r, e.c, st.hp, st.atk, e.boss, e.skin);
+      const st = enemyStats(e.def, L, e.guard ? 'guard' : e.boss, e.tier, e.mini);
+      const u = spawnUnit(e.def, 1, 'E', e.r, e.c, st.hp, st.atk, e.boss, e.skin);
+      u.tier = e.tier || 0; u.mini = !!e.mini; u.big = !!e.big; u.eskill = e.eskill || null;
+      u.pow = Math.min(2.5, 1 + 0.008 * (L - 1)) * (1 + 0.06 * u.tier);
+      u.ccMul = Math.min(1.6, 1 + 0.006 * (L - 1));
+      u.mpMul = Math.min(1.8, 1 + 0.006 * (L - 1));
     });
     S.projectiles = []; S.fx = []; S.floats = []; S.particles = []; S.log = [];
     S.battleT = 0; S.timeScale = 1; S.hitstop = 0; S.stopBank = J.stopBudget; S.ending = null;
     S.streak = { n: 0, t: 0 }; S.firstBlood = false;
-    S.bubbles = []; S.cutin = null; S.cutSeen = {}; S.cutCd = 0;
+    S.bubbles = []; S.cutin = null; S.cutSeen = {}; S.cutCd = 0; S.meteors = [];
     S.sel = null; S.drag = null;
     S.scene = 'battle';
-    S.boss = S.units.find(u => u.boss) || null;
+    S.bosses = S.units.filter(u => u.boss && !u.mini);
+    S.boss = S.bosses[0] || null;
     // intro: staggered spawns, optional boss intro, then FIGHT!
     S.phase = 'intro'; S.introT = 0;
     S.introLen = S.boss ? 2.4 : 1.0;
@@ -1017,7 +1079,7 @@
       u.spawnDelay = u.team === 'P' ? u.c * 0.06 + u.r * 0.02 : 0.2 + (u.c - PCOLS) * 0.05 + u.r * 0.02;
       u.spawnT = -u.spawnDelay;
     });
-    logMsg('레벨 ' + pad3(S.level) + ' · ' + zoneOf(S.level).name + (S.boss ? ' · 보스 등장!' : ''), C.gold);
+    logMsg('레벨 ' + pad3(S.level) + ' · ' + zoneName(S.level) + (S.boss ? ' · 보스 ' + S.bosses.length + '마리 등장!' : ''), C.gold);
     Sound.music('battle', zoneOf(S.level).id, !!S.boss);
     if (S.boss) { Sound.duck(0.3, 1600); Sound.play('bossroar'); }
   }
@@ -1028,7 +1090,7 @@
       uid: uidSeq++, def, star, team, r, c, x: p.x, y: p.y, fromX: p.x, fromY: p.y, moveT: 1, moveDur: def.move,
       hp, maxHp: hp, atk, range: def.range, aspd: def.aspd, mp: 0, maxMp: def.mp, lifesteal: def.lifesteal || 0,
       atkCd: rand(0.3, 0.8), target: null, retarget: 0, blocked: 0,
-      stun: 0, bind: 0, charm: 0, rage: 0, curse: 0, shield: 0, shieldT: 0, dots: [],
+      stun: 0, bind: 0, charm: 0, rage: 0, curse: 0, shield: 0, shieldT: 0, dots: [], frozen: 0, weak: 0,
       alive: true, deadT: 0, boss, skin, mon: skin ? MONSTERS[skin] : null,
       // presentation state
       anim: 'idle', animT: Math.random(), atkPhase: 0, castT: 0, castHold: 0, hitT: 0, freeze: 0,
@@ -1044,9 +1106,20 @@
   function endBattle(win, timeout) {
     const interest = Math.min(5, Math.floor(S.gold / 10));
     const boss = isBossLevel(S.level);
-    const gold = win ? 5 + Math.floor(S.level / 4) + interest + (boss ? 5 : 0) : 3 + interest;
-    S.result = { win, timeout, gold, interest, boss: win && boss, life: win && boss && S.lives < MAX_LIVES };
+    const gold = win ? 5 + Math.floor(S.level / 3) + interest + (boss ? 5 : 0) : 4 + Math.floor(S.level / 8) + interest;   // losing still pays enough to rebuild
+    S.result = { win, timeout, gold, interest, boss: win && boss, life: win && S.level % 10 === 0 && S.lives < MAX_LIVES, lost: [], wounded: [] };
     S.gold += gold;
+    // knock-outs count: the first one wounds a ghost, the second one removes it for good
+    S.units.forEach(u => {
+      if (u.team !== 'P' || u.alive || !u.ref || S.roster.indexOf(u.ref) < 0) return;
+      const r = u.ref;
+      r.deaths = (r.deaths | 0) + 1;
+      if (r.deaths >= 2) {   // gone for good; its soul returns half the sell value
+        const refund = Math.max(1, Math.floor(sellValue(r) / 2));
+        S.result.lost.push(GMAP[r.id].name + '(+' + refund + 'G)'); S.result.refund = (S.result.refund || 0) + refund;
+        S.gold += refund; S.roster.splice(S.roster.indexOf(r), 1);
+      } else S.result.wounded.push(GMAP[r.id].name);
+    });
     // commit the outcome now (applyResult only animates the transition)
     S.quits = 0;
     if (win) commitRun(S.level >= MAX_LEVEL ? S.level : S.level + 1, S.level >= MAX_LEVEL ? 0 : S.lives + (S.result.life ? 1 : 0));
@@ -1093,6 +1166,8 @@
     refreshShop();
     enterPrep(true);
     S.shopSlide = 0;
+    if (r.lost.length) flash(r.lost.join(', ') + ' 영구 소멸…');
+    else if (r.wounded.length && !store.get('gt_tip_wound')) { store.set('gt_tip_wound', '1'); flash('해골 표시 유령은 또 쓰러지면 사라져요'); }
     if (zoneOf(S.level) !== prevZone) showZoneCard();
   }
 
@@ -1193,7 +1268,7 @@
   function gainMp(u, n) {
     if (!u.alive || !u.maxMp) return;
     const was = u.mp;
-    u.mp = Math.min(u.maxMp, u.mp + n);
+    u.mp = Math.min(u.maxMp, u.mp + n * (u.mpMul || 1));
     if (was < u.maxMp && u.mp >= u.maxMp && u.team === 'P') Sound.play('mpfull');
   }
 
@@ -1211,6 +1286,8 @@
     o = o || {};
     if (!tgt.alive) return 0;
     const kind = o.kind || 'normal';
+    if (src && src.pow && (kind === 'skill' || kind === 'dot')) amount *= src.pow;   // enemy skills grow per level
+    if (src && src.weak > 0) amount *= 0.7;                                          // terrified: -30% damage
     let dmg = kind === 'true' ? amount : amount * (tgt.curse > 0 ? 1.25 : 1);
     if (kind !== 'true' && tgt.shield > 0) {
       const ab = Math.min(tgt.shield, dmg);
@@ -1250,6 +1327,18 @@
     } else {
       Juice.stop(J.stop.allyDown, J.shake.allyDown);
       Sound.play('allydown');
+      if (u.ref && u.wounded) {   // second knock-out: gone for good
+        u.perma = true;
+        S.fx.push({ type: 'soul', name: u.def.id + '_idle0', x: u.x, y: u.y, t: 0, dur: 1.4 });
+        S.fx.push({ type: 'tomb', x: u.x, y: u.y + 2, t: 0, dur: 9999, behind: true });
+        number('영구 소멸!', u, 'exec');
+        logMsg(u.def.name + ' 영구 소멸! (두 번 쓰러져 부활 불가)', '#ff6060');
+        say(u, '안녕히…', 'ally');
+        Sound.play('heartbreak');
+      } else if (u.ref) {
+        number('쓰러짐 1/2', u, 'hurt');
+        logMsg(u.def.name + ' 쓰러짐 · 한 번 더 쓰러지면 소멸', '#ffb070');
+      }
     }
   }
 
@@ -1288,6 +1377,9 @@
     charm: ['♥_♥', '주인님…?', '좋아요♥'],
     bind: ['못 움직여!', '이게 뭐야?!'],
     curse: ['으스스…', '소름 끼쳐!'],
+    freeze: ['꽁꽁 얼었다…', '추, 추워!'],
+    poison: ['콜록콜록!', '숨이 막혀…'],
+    fear: ['무, 무서워!', '으아악!'],
     thanks: ['고마워!', '든든하다!']
   };
   const pick = a => a[Math.floor(Math.random() * a.length)];
@@ -1302,10 +1394,10 @@
   }
   function reply(v, kind) { if (v && v.alive && REPLY[kind]) say(v, pick(REPLY[kind]), 'reply', 0.3); }
   function cutIn(u, line) {
-    const key = u.boss ? 'boss' : u.team + u.def.id;
+    const key = u.boss ? 'boss' : u.eskill ? 'e' + u.eskill : u.team + u.def.id;
     if (S.cutin || S.cutCd > 0 || S.cutSeen[key]) return;
     S.cutSeen[key] = 1;
-    S.cutin = { u, def: u.def, boss: !!u.boss, ally: u.team === 'P', line, t: 0, dur: 1.15, seed: (Math.random() * 1e9) | 0 };
+    S.cutin = { u, def: u.def, boss: !!u.boss, ally: u.team === 'P', line, skill: skillName(u), color: u.eskill ? ESK[u.eskill].color : null, t: 0, dur: 1.15, seed: (Math.random() * 1e9) | 0 };
     S.cutCd = 2.2;
   }
   function updateTalk(rdt) {
@@ -1320,11 +1412,11 @@
 
   function announce(u) {
     S.skillCount[u.def.id] = (S.skillCount[u.def.id] || 0) + 1;
-    const line = u.def.lines ? pick(u.def.lines) : '';
+    const line = u.eskill ? ESK[u.eskill].line : u.def.lines ? pick(u.def.lines) : '';
     if (u.team === 'P') { say(u, line, 'ally'); cutIn(u, line); }
     else if (u.boss) { say(u, line, 'boss'); cutIn(u, line); }
     else say(u, line, 'enemy');
-    logMsg((u.team === 'P' ? u.def.name : unitName(u) + '(' + u.def.name + ')') + ': ' + u.def.skill + '!', u.team === 'P' ? u.def.color : '#ff8080');
+    logMsg((u.team === 'P' ? u.def.name : unitName(u) + (u.eskill ? '' : '(' + u.def.name + ')')) + ': ' + skillName(u) + '!', u.team === 'P' ? u.def.color : u.eskill ? ESK[u.eskill].color : '#ff8080');
     u.castHold = 0.32;
     u.anim = 'cast'; u.animT = 0;
     squash(u, 1.2, 0.85, 0.066);
@@ -1334,6 +1426,15 @@
   // can the unit's skill fire right now? (mirrors the guards inside castSkill)
   function skillReady(u, t) {
     const inRange = t && t.alive && isHostile(u, t) && cheb(u, t) <= u.range;
+    if (u.eskill) {
+      const foes = hostilesOf(u);
+      switch (u.eskill) {
+        case 'frost': return u.range > 1 ? !!inRange : foes.some(v => cheb(v, u) <= 1);
+        case 'poison': return !!inRange;
+        case 'roar': return foes.some(v => cheb(v, u) <= 2);
+        default: return foes.length > 0;
+      }
+    }
     switch (u.def.id) {
       case 'dracula': case 'frank': case 'gumiho': case 'palcheok': return !!inRange;
       case 'succubus': return S.units.some(v => isHostile(u, v) && v.charm <= 0 && cheb(u, v) <= u.range);
@@ -1348,6 +1449,7 @@
     const t = u.target && u.target.alive && isHostile(u, u.target) ? u.target : null;
     const inRange = t && cheb(u, t) <= u.range;
     const sk = { kind: 'skill' };
+    if (u.eskill) return castEnemySkill(u, foes, t, inRange);
 
     switch (u.def.id) {
       case 'dracula': { // Blood Feast
@@ -1372,7 +1474,7 @@
           S.fx.push({ type: 'bolt', x: u.x, y: u.y - 34, x2: v.x, y2: v.y - 26, t: 0, dur: 0.3 });
           addSpr('frank_spawn', v.x, v.y - 4, { dur: 0.4, s: 2 });
           dealDamage(u, v, u.atk * 1.5, sk);
-          if (v.alive) v.stun = Math.max(v.stun, 1.5);
+          if (v.alive) v.stun = Math.max(v.stun, 1.5 * (u.ccMul || 1));
         });
         reply(hit.find(v => v.alive), 'stun');
         S.flashBoard = { color: 'rgba(160,248,255,0.25)', t: 0.05 };
@@ -1396,7 +1498,7 @@
         S.fx.push({ type: 'bandage', x: u.x, y: u.y - 30, u: v, t: 0, dur: 0.55 });
         addSpr('mummy_spawn', v.x, v.y - 6, { dur: 0.6, s: 2 });
         dealDamage(u, v, u.atk * 1.2, sk);
-        if (v.alive) v.stun = Math.max(v.stun, 2.5);
+        if (v.alive) v.stun = Math.max(v.stun, 2.5 * (u.ccMul || 1));
         reply(v, 'stun');
         Juice.stop(J.stop.skill, J.shake.skill);
         Sound.play('bandage');
@@ -1453,7 +1555,7 @@
         addSpr('palcheok_spawn', t.x, t.y - 8, { dur: 0.8, s: 4, behind: true });
         addSpr('palcheok_sfx', t.x, t.y - 34, { dur: 0.45, s: 2, flip: u.face < 0 });
         foes.filter(v => cheb(v, t) <= 1).forEach(v => {
-          v.bind = Math.max(v.bind, 3);
+          v.bind = Math.max(v.bind, 3 * (u.ccMul || 1));
           v.dots.push({ dps: u.atk * 0.8, t: 4, acc: 0, src: u });
           v.flashT = 0.05; v.freeze = Math.max(v.freeze, 0.1);
         });
@@ -1491,6 +1593,87 @@
     return false;
   }
 
+  // ---- the four deadly enemy skills ---------------------------------------
+  function castEnemySkill(u, foes, t, inRange) {
+    const ccm = u.ccMul || 1;
+    switch (u.eskill) {
+      case 'frost': {   // freeze everything around the target (melee casters: around themselves)
+        const center = u.range > 1 ? (inRange ? t : null) : u;
+        if (!center) return false;
+        const hit = foes.filter(v => cheb(v, center) <= 1);
+        if (!hit.length) return false;
+        announce(u);
+        hit.forEach(v => {
+          dealDamage(u, v, u.atk * 0.8, { kind: 'skill' });
+          if (!v.alive) return;
+          v.frozen = Math.max(v.frozen, 1.8 * ccm); v.castT = 0;
+          shards(v.x, v.y - 24, '#dff8ff', 8);
+        });
+        S.fx.push({ type: 'frost', x: center.x, y: center.y - 20, t: 0, dur: 0.5 });
+        S.flashBoard = { color: 'rgba(170,230,255,0.22)', t: 0.06 };
+        reply(hit.find(v => v.alive), 'freeze');
+        Juice.stop(J.stop.aoe, J.shake.aoe);
+        Sound.play('shieldbreak');
+        return true;
+      }
+      case 'poison': {  // a lingering cloud: heavy damage over 5 s on the 3x3 around the target
+        if (!inRange) return false;
+        announce(u);
+        S.fx.push({ type: 'cloud', r: t.r, c: t.c, t: 0, dur: 2.6, behind: true });
+        foes.filter(v => cheb(v, t) <= 1).forEach(v => { v.dots.push({ dps: u.atk * 0.4, t: 5, acc: 0, src: u }); v.redT = 0.1; });
+        reply(t, 'poison');
+        Sound.play('curse');
+        return true;
+      }
+      case 'meteor': {  // telegraphed: a red circle marks the busiest 3x3, 1 s later it explodes
+        let best = null, bn = 0;
+        for (const v of foes) { const n = foes.filter(w => cheb(w, v) <= 1).length; if (n > bn) { bn = n; best = v; } }
+        if (!best) return false;
+        announce(u);
+        S.meteors.push({ r: best.r, c: best.c, t: 0, delay: 1.0, src: u, team: u.team, dmg: u.atk * 2.4 });
+        Sound.play('cast');
+        return true;
+      }
+      case 'roar': {    // fear: stun everything within 2 cells, then -30% damage for 4 s
+        const hit = foes.filter(v => cheb(v, u) <= 2);
+        if (!hit.length) return false;
+        announce(u);
+        hit.forEach(v => { v.stun = Math.max(v.stun, 1.0 * ccm); v.weak = Math.max(v.weak, 4); });
+        S.fx.push({ type: 'roar', x: u.x, y: u.y - 30, t: 0, dur: 0.6 });
+        S.trauma = Math.min(1, S.trauma + 0.4);
+        reply(hit[0], 'fear');
+        Sound.play('bossroar');
+        return true;
+      }
+    }
+    return false;
+  }
+
+  function updateMeteors(dt) {
+    for (let i = S.meteors.length - 1; i >= 0; i--) {
+      const m = S.meteors[i];
+      m.t += dt;
+      if (m.t < m.delay) continue;
+      S.meteors.splice(i, 1);
+      const p = cellCenter(m.r, m.c);
+      S.units.filter(v => v.alive && v.team !== m.team && cheb(v, m) <= 1).forEach(v => {
+        dealDamage(m.src, v, m.dmg, { kind: 'skill' });
+        if (v.alive) v.dots.push({ dps: m.src.atk * 0.25, t: 3, acc: 0, src: m.src });
+      });
+      for (let dr = -1; dr <= 1; dr++) for (let dc = -1; dc <= 1; dc++) {
+        const r = m.r + dr, c = m.c + dc;
+        if (r < 0 || r >= ROWS || c < 0 || c >= COLS) continue;
+        const q = cellCenter(r, c);
+        addSpr('fx_hit1', q.x + rand(-6, 6), q.y - 24 + rand(-6, 6), { dur: 0.35, s: 2 });
+      }
+      S.fx.push({ type: 'slam', name: 'fx_exec0', x: p.x, y: p.y - 30, t: 0, dur: 0.5 });
+      burst(p.x, p.y - 20, '#ff8030', 24, 220);
+      S.flashBoard = { color: 'rgba(255,120,40,0.28)', t: 0.07 };
+      S.trauma = Math.min(1, S.trauma + 0.6);
+      Sound.play('execute');
+    }
+  }
+
   function execute(u, v) {
     S.dim = { t: 0.5, a: 0.5, keep: [u, v] };
     addSpr('reaper_spawn', v.x, v.y - 6, { dur: 0.7, s: 2, behind: true });
@@ -1510,6 +1693,13 @@
     if (u.curse > 0) u.curse -= dt;
     if (u.charm > 0) { u.charm -= dt; if (u.charm <= 0) u.target = null; }
     if (u.shieldT > 0) { u.shieldT -= dt; if (u.shieldT <= 0) u.shield = 0; }
+    if (u.frozen > 0) u.frozen -= dt;
+    if (u.weak > 0) u.weak -= dt;
+    if (u.boss && !u.enraged && u.hp < u.maxHp * 0.5) {   // bosses go berserk at half HP
+      u.enraged = true; u.aspd *= 1.4; u.atk *= 1.25;
+      number('광폭화!', u, 'exec'); say(u, '크아아아!', 'boss');
+      S.trauma = Math.min(1, S.trauma + 0.3); Sound.play('bloodrage');
+    }
 
     for (let i = u.dots.length - 1; i >= 0; i--) {
       const d = u.dots[i];
@@ -1530,7 +1720,7 @@
       if (u.moveT >= 1) squash(u, 1.2, 0.8, 0.05);
       if (u.moveT < 1) return;
     }
-    if (u.stun > 0) { u.castT = 0; return; }
+    if (u.stun > 0 || u.frozen > 0) { u.castT = 0; return; }
 
     // skill telegraph (CAST state): 200ms before the skill fires
     if (u.castT > 0) {
@@ -1554,9 +1744,9 @@
 
     if (u.maxMp && u.mp >= u.maxMp && u.bind <= 0 && !(u.castRetry > 0) && skillReady(u, t)) {
       u.castT = J.castTime;
-      u.castSkillName = u.def.skill;
+      u.castSkillName = skillName(u);
       u.anim = 'cast'; u.animT = 0; u.castHold = J.castTime;
-      S.floats.push({ str: u.def.skill + '!', x: u.x, y: u.y - 72, st: NUM.skill, scale: 1, t: 0, dur: 0.9, vx: 0, vy: -20, g: 0 });
+      S.floats.push({ str: skillName(u) + '!', x: u.x, y: u.y - 72, st: NUM.skill, scale: 1, t: 0, dur: 0.9, vx: 0, vy: -20, g: 0 });
       return;
     }
 
@@ -1606,7 +1796,7 @@
           S.projectiles.splice(i, 1);
           for (let h = 0; h < 5; h++) S.fx.push({ type: 'sprite', name: 'fx_charm1', x: tx + rand(-14, 14), y: ty + rand(-10, 6), t: 0, dur: 0.6, s: 2, rise: 20 });
           dealDamage(p.src, t, p.src.atk, { kind: 'skill' });
-          if (t.alive) { t.charm = 3; t.target = null; number('매혹!', t, 'skill'); reply(t, 'charm'); }
+          if (t.alive) { t.charm = 3 * (p.src && p.src.ccMul || 1); t.target = null; number('매혹!', t, 'skill'); reply(t, 'charm'); }
           Juice.stop(0.05, 0.2);
         }
         continue;
@@ -1637,6 +1827,7 @@
     S.battleT += dt;
     for (const u of S.units) if (u.alive) updateUnit(u, dt);
     updateProjectiles(dt);
+    updateMeteors(dt);
     if (S.ending) return;
     let p = false, e = false;
     for (const u of S.units) if (u.alive) { if (u.team === 'P') p = true; else e = true; }
@@ -1926,9 +2117,9 @@
     const pan = Math.round(-34 + 34 * Math.sin((t * Math.PI * 2) / 40));
     if (layer) ctx.drawImage(layer, pan, STAGE_Y);
     else { ctx.fillStyle = C.panel; ctx.fillRect(0, STAGE_Y, W, CONSOLE_Y - STAGE_Y); }
-    // block-of-ten sky variety + boss mood
-    const block = Math.floor((S.level - 1) / 10) % 5;
-    if (block) { ctx.fillStyle = 'rgba(6,17,25,' + (0.04 * block) + ')'; ctx.fillRect(0, STAGE_Y, W, CONSOLE_Y - STAGE_Y); }
+    // lap mood (every 25 levels) + boss mood
+    const mood = S.scene !== 'title' ? zoneMood(S.level) : null;
+    if (mood) { ctx.fillStyle = mood.wash; ctx.fillRect(0, STAGE_Y, W, CONSOLE_Y - STAGE_Y); }
     if (isBossLevel(S.level) && S.scene !== 'title') {
       ctx.fillStyle = 'rgba(64,0,16,0.25)'; ctx.fillRect(0, STAGE_Y, W, CONSOLE_Y - STAGE_Y);
     }
@@ -1999,12 +2190,12 @@
     ctx.fillStyle = C.line; ctx.fillRect(0, 26, W, 2);
     text('레벨 ' + pad3(S.level), 6, 4, C.gold, 2);
     // boss pips (progress to the next boss)
-    const into = S.level % 10;
-    for (let i = 0; i < 10; i++) {
-      ctx.fillStyle = i === 9 ? (into === 0 ? C.sel : '#4a1c22') : i < (into === 0 ? 10 : into) ? C.gold : '#2a3646';
-      ctx.fillRect(6 + i * 7, 20, 5, 4);
+    const into = S.level % 5;   // pips: progress to the next boss wave (every 5 levels)
+    for (let i = 0; i < 5; i++) {
+      ctx.fillStyle = i === 4 ? (into === 0 ? C.sel : '#4a1c22') : i < (into === 0 ? 5 : into) ? C.gold : '#2a3646';
+      ctx.fillRect(6 + i * 13, 20, 11, 4);
     }
-    text(zoneOf(S.level).name, 84, 6, C.text, 1);
+    text(fitText(zoneName(S.level), 66, 1), 84, 6, C.text, 1);
     if (isBossLevel(S.level) && Math.floor(S.time * 3) % 2 === 0) text('보스!', 84, 16, C.sel, 1);
     for (let i = 0; i < S.lives - (S.heartFall ? 1 : 0); i++) spr('ic_heart', 158 + i * 18, 14, 1);
     if (S.heartFall) {
@@ -2110,7 +2301,7 @@
   function drawUnit(u) {
     if (!u.alive && u.deadT > 0.45) return;
     if (u.spawnT < 0) return;
-    const scale = u.boss ? 3 : 2;
+    const scale = u.big ? 3 : 2;
     const frozen = u.freeze > 0;
     let x = u.x, y = u.y;
     const floatY = u.mon && u.mon.float ? Math.sin(S.time * 7.8 + u.bob) * u.mon.float / 2 - u.mon.float : 0;
@@ -2129,9 +2320,9 @@
 
     // shadow + team ring
     ctx.fillStyle = 'rgba(0,0,0,0.45)';
-    ctx.beginPath(); ctx.ellipse(u.x, u.y + 1, u.boss ? 24 : 15, u.boss ? 5 : 3.5, 0, 0, Math.PI * 2); ctx.fill();
-    ctx.strokeStyle = effTeam(u) === 'P' ? C.hover : C.sel; ctx.lineWidth = 1;
-    ctx.beginPath(); ctx.ellipse(u.x, u.y + 1, u.boss ? 26 : 17, u.boss ? 6 : 4.5, 0, 0, Math.PI * 2); ctx.stroke();
+    ctx.beginPath(); ctx.ellipse(u.x, u.y + 1, u.big ? 24 : 15, u.big ? 5 : 3.5, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.strokeStyle = effTeam(u) === 'P' ? C.hover : u.boss ? C.gold : C.sel; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.ellipse(u.x, u.y + 1, u.big ? 26 : 17, u.big ? 6 : 4.5, 0, 0, Math.PI * 2); ctx.stroke();
     if (u.castT > 0) {   // telegraph ring
       const k = 1 - u.castT / J.castTime;
       ctx.strokeStyle = u.def.color; ctx.lineWidth = 2;
@@ -2140,6 +2331,7 @@
 
     const name = unitFrame(u), flip = unitFlip(u);
     spr(name, x, y, scale, { flip, a, sx, sy });
+    if (u.tier && u.alive) spr(name, x, y, scale, { flip, sx, sy, tint: TIER_TINT[u.tier], a: 0.3 });   // grade colour
     // tint overlays (flash / curse / charm)
     if (u.alive) {
       if (u.flashT > 0) spr(name, x, y, scale, { flip, sx, sy, tint: 'w', a: u.flashT < 0.017 ? 0.5 : 1 });
@@ -2147,6 +2339,15 @@
       else if (u.charm > 0) spr(name, x, y, scale, { flip, sx, sy, tint: 'p', a: 0.25 + 0.15 * Math.sin(S.time * Math.PI * 8) });
       else if (u.curse > 0) spr(name, x, y, scale, { flip, sx, sy, tint: 'v', a: 0.22 });
       else if (u.rage > 0) spr(name, x, y, scale, { flip, sx, sy, tint: 'r', a: 0.18 });
+      else if (u.enraged) spr(name, x, y, scale, { flip, sx, sy, tint: 'r', a: 0.2 + 0.12 * Math.sin(S.time * 12) });
+      if (u.frozen > 0) {   // ice: 50% ice-coloured overlay + a translucent block
+        spr(name, x, y, scale, { flip, sx, sy, tint: 'i', a: 0.5 });
+        const f = FR[name], bw = f ? f[2] * scale + 6 : 40, bh = fh(name, scale) + 4;
+        const bx = Math.round(u.x - bw / 2), by = Math.round(u.y - bh + 2);
+        ctx.fillStyle = 'rgba(190,240,255,0.2)'; ctx.fillRect(bx, by, bw, bh);
+        ctx.strokeStyle = 'rgba(225,250,255,0.75)'; ctx.lineWidth = 1; ctx.strokeRect(bx + 0.5, by + 0.5, bw - 1, bh - 1);
+        ctx.fillStyle = 'rgba(255,255,255,0.55)'; ctx.fillRect(bx + 3, by + 3, 2, Math.min(14, bh - 6)); ctx.fillRect(bx + 3, by + 3, Math.min(10, bw - 6), 2);
+      }
     } else if (u.deadT < 0.05) spr(name, x, y, scale, { flip, tint: 'w' });
     if (!u.alive) return;
 
@@ -2160,8 +2361,10 @@
       }
     }
     const top = u.y - fh(name, scale) - 6;
-    const barW = u.boss ? 56 : 40;
+    const barW = u.boss ? 48 : 40;
     drawBars(u, u.x, top, barW);
+    if (u.boss) crown(u.x, top - 8, u.mini);
+    if (u.tier) for (let i = 0; i < u.tier; i++) { ctx.fillStyle = '#000'; ctx.fillRect(u.x - barW / 2 - 6, top + i * 4 - 1, 5, 5); ctx.fillStyle = TIER_COLOR[u.tier]; ctx.fillRect(u.x - barW / 2 - 5, top + i * 4, 3, 3); }
     if (u.star > 1) {
       for (let i = 0; i < u.star; i++) spr('ic_star', u.x - (u.star - 1) * 5 + i * 10, u.y + 9, 1, { sx: 0.5, sy: 0.5 });
     }
@@ -2173,6 +2376,8 @@
     }
     if (u.dots.length) { spr('st_fire', ix, top - 8, 1); ix += 12; }
     if (u.shield > 0) { spr('st_orb', ix, top - 8, 1); ix += 12; }
+    if (u.frozen > 0) { const qx = Math.round(ix - 4), qy = Math.round(top - 12); ctx.fillStyle = '#000'; ctx.fillRect(qx, qy, 9, 9); ctx.fillStyle = '#bff2ff'; ctx.fillRect(qx + 1, qy + 1, 7, 7); ctx.fillStyle = '#ffffff'; ctx.fillRect(qx + 2, qy + 2, 2, 2); ix += 12; }
+    if (u.weak > 0) { const qx = Math.round(ix - 4), qy = Math.round(top - 12); ctx.fillStyle = '#000'; ctx.fillRect(qx, qy, 9, 9); ctx.fillStyle = '#ff5060'; ctx.fillRect(qx + 3, qy + 1, 3, 4); ctx.fillRect(qx + 1, qy + 4, 7, 2); ctx.fillRect(qx + 3, qy + 6, 3, 2); ix += 12; }
     if (u.stun > 0) {
       for (let i = 0; i < 3; i++) {
         const ang = S.time * 6 + i * 2.1;
@@ -2180,6 +2385,15 @@
       }
     }
     if (S.sel && S.sel.kind === 'unit' && S.sel.u === u) brackets(u.x, u.y - 30, 26, 36, effTeam(u) === 'P' ? C.hover : C.sel);
+  }
+
+  // pixel crown over bosses (silver for mini-bosses)
+  function crown(x, y, mini) {
+    x = Math.round(x - 5); y = Math.round(y);
+    ctx.fillStyle = '#000'; ctx.fillRect(x - 1, y - 1, 12, 8);
+    ctx.fillStyle = mini ? '#c8d0dc' : C.gold;
+    ctx.fillRect(x, y + 3, 10, 3); ctx.fillRect(x, y, 2, 3); ctx.fillRect(x + 4, y, 2, 3); ctx.fillRect(x + 8, y, 2, 3);
+    ctx.fillStyle = '#e0484f'; ctx.fillRect(x + 4, y + 4, 2, 1);
   }
 
   function brackets(cx, cy, hw, hh, color) {
@@ -2196,7 +2410,7 @@
     const bossLv = isBossLevel(S.level);
     S.wave.forEach(e => {
       const p = cellCenter(e.r, e.c);
-      const s = e.boss ? 3 : 2;
+      const s = e.big ? 3 : 2;
       const name = 'en_' + e.skin;
       const mon = MONSTERS[e.skin];
       const flip = mon.face === 1;
@@ -2205,7 +2419,10 @@
       ctx.beginPath(); ctx.ellipse(p.x, p.y + 1, e.boss ? 24 : 15, e.boss ? 5 : 3.5, 0, 0, Math.PI * 2); ctx.fill();
       if (e.boss && bossLv) spr(name, p.x + 1, fy, s, { flip, tint: 'r', a: 0.4 + 0.4 * Math.abs(Math.sin(S.time * Math.PI * 1.5)) });
       spr(name, p.x, fy, s, { flip, a: e.boss ? 1 : 0.6 });
-      if (S.sel && S.sel.kind === 'wave' && S.sel.e === e) brackets(p.x, p.y - 28, 26, 34, C.sel);
+      if (e.tier) spr(name, p.x, fy, s, { flip, tint: TIER_TINT[e.tier], a: 0.3 });
+      if (e.boss) crown(p.x, fy - fh(name, s) - 6, e.mini);
+      if (e.eskill) { const k = ESK[e.eskill]; ctx.fillStyle = '#000'; ctx.fillRect(p.x + 9, p.y - 13, 8, 8); ctx.fillStyle = k.color; ctx.fillRect(p.x + 10, p.y - 12, 6, 6); }
+      if (S.sel && S.sel.kind === 'wave' && S.sel.e === e) brackets(p.x, p.y - 28, 22, 34, C.sel);
     });
     S.roster.forEach(u => {
       if (u.loc !== 'board' || (S.drag && S.drag.active && S.drag.u === u)) return;
@@ -2218,10 +2435,11 @@
       const k = u.pop > 0 ? u.pop / 0.25 : 0;
       const frame = d.id + (Math.floor((S.time + u.uid * 0.37) / 0.36) % 2 ? '_idle1' : '_idle0');
       spr(frame, p.x, p.y, 2, { sx: 1 + 0.25 * k, sy: 1 - 0.2 * k });
+      if (u.deaths) { spr(frame, p.x, p.y, 2, { tint: 'k', a: 0.3 }); skull(p.x + 12, p.y - 58); }
       if (u.star > 1) for (let i = 0; i < u.star; i++) spr('ic_star', p.x - (u.star - 1) * 5 + i * 10, p.y + 9, 1, { sx: 0.5, sy: 0.5 });
       if (S.sel && S.sel.u === u) {
         ctx.strokeStyle = C.sel; ctx.lineWidth = 2;
-        ctx.strokeRect(BOARD_X + u.c * CELL_W + 3, BOARD_Y + u.r * CELL_H + 3, CELL_W - 6, CELL_H - 6);
+        ctx.strokeRect(BOARD_X + u.c * CELL_W + 2, BOARD_Y + u.r * CELL_H + 2, CELL_W - 4, CELL_H - 4);
       }
     });
   }
@@ -2233,7 +2451,7 @@
 
   function drawBench() {
     text('대기석', 6, BENCH_Y + 12, C.hover, 1);
-    text(S.roster.filter(u => u.loc === 'bench').length + '/' + BENCH_N, 6, BENCH_Y + 24, C.dim, 1);
+    text(S.roster.filter(u => u.loc === 'bench').length + '/' + BENCH_N, 6, BENCH_Y + 26, C.dim, 1);
     for (let i = 0; i < BENCH_N; i++) {
       const x = BENCH_X + i * SLOT_GAP, y = BENCH_Y;
       const hot = S.drag && S.drag.active && slotAt(S.drag) === i;
@@ -2243,11 +2461,23 @@
       const u = rosterAtSlot(i);
       if (u && !(S.drag && S.drag.active && S.drag.u === u)) {
         const k = u.pop > 0 ? u.pop / 0.25 : 0;
-        spr(u.id + '_idle0', x + SLOT_W / 2, y + SLOT_H - 4, 1, { sx: 1 + 0.25 * k, sy: 1 - 0.2 * k });
-        if (u.star > 1) for (let s = 0; s < u.star; s++) spr('ic_star', x + 8 + s * 9, y + 9, 1, { sx: 0.5, sy: 0.5 });
+        spr(u.id + '_idle0', x + SLOT_W / 2, y + SLOT_H - 3, 1, { sx: 1 + 0.25 * k, sy: 1 - 0.2 * k });
+        if (u.deaths) spr(u.id + '_idle0', x + SLOT_W / 2, y + SLOT_H - 3, 1, { tint: 'k', a: 0.3 });
+        if (u.star > 1) for (let s = 0; s < u.star; s++) spr('ic_star', x + 6 + s * 7, y + 7, 1, { sx: 0.5, sy: 0.5 });
+        if (u.deaths) skull(x + SLOT_W - 10, y + 3);
         if (S.sel && S.sel.u === u) { ctx.strokeStyle = C.sel; ctx.lineWidth = 2; ctx.strokeRect(x + 2, y + 2, SLOT_W - 4, SLOT_H - 4); }
       }
     }
+  }
+
+  // 7x7 pixel skull: "already fell once - one more and it is gone for good"
+  function skull(x, y, a) {
+    if (a != null) ctx.globalAlpha = a;
+    ctx.fillStyle = '#000'; ctx.fillRect(x - 1, y - 1, 9, 9);
+    ctx.fillStyle = '#f2f2f2';
+    ctx.fillRect(x + 1, y, 5, 1); ctx.fillRect(x, y + 1, 7, 3); ctx.fillRect(x + 1, y + 4, 5, 1); ctx.fillRect(x + 2, y + 5, 3, 2);
+    ctx.fillStyle = '#d02020'; ctx.fillRect(x + 1, y + 2, 2, 1); ctx.fillRect(x + 4, y + 2, 2, 1);
+    ctx.globalAlpha = 1;
   }
 
   function drawShop() {
@@ -2309,27 +2539,20 @@
     text(String(left), BOX_TIMER.x + 90, BOX_TIMER.y + 12, left <= 10 ? C.sel : '#fff', 4, 'center');
   }
 
+  // compact synergy strip over the sky (the board uses the full width)
   function drawSynergy() {
-    panel(SYN.x, SYN.y, SYN.w, SYN.h);
     const list = S.scene === 'prep' ? S.roster.filter(u => u.loc === 'board') : S.units.filter(u => u.team === 'P');
     const s = synergy(list);
-    let y = SYN.y + 8;
-    const x = SYN.x + 6;
-    const line = (str, col, gap) => { text(str, x, y, col, 1); y += gap || 12; };
-    line('시너지', C.gold, 15);
-    line('서양 ' + s.w + '/4', C.west);
-    line(s.w >= 4 ? '체력 +35%' : s.w >= 2 ? '체력 +15%' : '2명: 체력↑', s.w >= 2 ? '#fff' : C.dim, 15);
-    line('동양 ' + s.e + '/4', C.east);
-    line(s.e >= 4 ? '공격 +35%' : s.e >= 2 ? '공격 +15%' : '2명: 공격↑', s.e >= 2 ? '#fff' : C.dim, 15);
-    const pm = powerMul();
-    line('제단 x' + (pm < 100 ? pm.toFixed(2) : fmt(pm)), '#b080ff', 15);
-    const m = levelMultipliers(S.level);
+    ctx.fillStyle = 'rgba(6,17,25,0.72)'; ctx.fillRect(SYN.x, SYN.y, SYN.w, SYN.h);
+    ctx.fillStyle = C.line; ctx.fillRect(SYN.x, SYN.y, SYN.w, 1); ctx.fillRect(SYN.x, SYN.y + SYN.h - 1, SYN.w, 1);
+    const x = SYN.x + 5;
+    text('서양 ' + s.w + '/4', x, SYN.y + 4, C.west, 1);
+    text(s.w >= 4 ? '체력+35%' : s.w >= 2 ? '체력+15%' : '2명: 체력↑', x + 50, SYN.y + 4, s.w >= 2 ? '#fff' : C.dim, 1);
+    text('동양 ' + s.e + '/4', x, SYN.y + 17, C.east, 1);
+    text(s.e >= 4 ? '공격+35%' : s.e >= 2 ? '공격+15%' : '2명: 공격↑', x + 50, SYN.y + 17, s.e >= 2 ? '#fff' : C.dim, 1);
+    const pm = powerMul(), m = levelMultipliers(S.level);
     const mf = v => (v < 100 ? v.toFixed(2) : fmt(v));
-    line('적 체력 x' + mf(m.hp), '#ff9090');
-    line('적 공격 x' + mf(m.atk), '#ff9090', 15);
-    line(isBossLevel(S.level) ? '보스 등장!' : '보스 ' + pad3(Math.ceil(S.level / 10) * 10), isBossLevel(S.level) ? C.sel : C.dim);
-    const nz = ZONES.find(z => z.from > S.level);
-    if (nz) { line('다음: ' + nz.name, C.dim); line('레벨 ' + pad3(nz.from), C.dim); }
+    text('제단 x' + (pm < 100 ? pm.toFixed(2) : fmt(pm)) + ' · 적 x' + mf(m.hp), x, SYN.y + 30, '#b8a0ff', 1);
   }
 
   function drawInfo() {
@@ -2344,7 +2567,7 @@
       live = sel.u; def = live.def; star = live.star; hp = live.maxHp; atk = live.atk; enemy = live.team === 'E'; skin = live.skin; boss = live.boss;
     } else if (sel && sel.kind === 'wave') {
       def = sel.e.def; enemy = true; skin = sel.e.skin; boss = sel.e.boss;
-      const st = enemyStats(def, S.level, boss); hp = st.hp; atk = st.atk;
+      const st = enemyStats(def, S.level, sel.e.guard ? 'guard' : boss, sel.e.tier, sel.e.mini); hp = st.hp; atk = st.atk;
     } else if (S.hover != null && S.shop[S.hover]) {
       def = GMAP[S.shop[S.hover]];
       const st = playerStats(def.id, 1, { hp: 1, atk: 1 }); hp = st.hp; atk = st.atk;
@@ -2359,15 +2582,21 @@
     if (!def) {
       // how to play, in three short steps
       text('도움말', x, y, C.gold, 1); y += 15;
+      // the wave's most dangerous enemy skill replaces the last tip, with its counterplay
+      const has = k => S.wave.some(e => e.eskill === k);
+      const danger = has('meteor') ? ['주의! 지옥불', '흩어서 배치하세요'] : has('poison') ? ['주의! 독안개', '뭉치면 함께 중독'] : has('frost') ? ['주의! 빙결', '붙어 있으면 함께 얼어요'] : has('roar') ? ['주의! 공포의 포효', '보스 근처는 기절'] : null;
       [['① 카드로 유령 구매', '#fff'], ['② 왼쪽 칸에 배치', '#fff'], ['③ 전투 시작!', '#fff'], ['', 0],
-        ['이기면 레벨업!', C.gold], ['같은 유령 3마리', C.hover], ['= ★ 강화', C.hover], ['', 0], ['언제 꺼도 저장돼요', C.dim]].forEach(([l, c]) => {
+        ['이기면 레벨업!', C.gold], ['같은 유령 3마리', C.hover], ['= ★ 강화', C.hover], ['', 0],
+        danger ? [danger[0], '#ff8a50'] : ['언제 꺼도 저장돼요', C.dim], danger ? [danger[1], '#fff'] : ['', 0]].forEach(([l, c]) => {
         if (l) wrap(l, 11).forEach(w => { text(w, x, y, c, 1); y += 12; }); else y += 5;
       });
       return;
     }
+    const tier = sel && sel.kind === 'wave' ? sel.e.tier : live ? live.tier : 0;
+    const esk = sel && sel.kind === 'wave' ? sel.e.eskill : live ? live.eskill : null;
     if (enemy) {
       text(fitText(boss ? zoneOf(S.level).skins.bossName : MONSTERS[skin].name, maxW, 1), x, y, '#ff8080', 1); y += 12;
-      text(fitText('빙의: ' + def.name, maxW, 1), x, y, C.dim, 1); y += 13;
+      text(fitText((boss ? '보스 · ' : '') + '등급 ' + TIER_NAME[tier || 0], maxW, 1), x, y, TIER_COLOR[tier || 0], 1); y += 13;
     } else {
       text(fitText(def.name, maxW, 1), x, y, '#fff', 1); y += 12;
       text(star > 1 ? '★'.repeat(star) : def.origin === 'W' ? '서양' : '동양', x, y, star > 1 ? C.gold : def.origin === 'W' ? C.west : C.east, 1); y += 13;
@@ -2378,10 +2607,12 @@
     text(fmt(atk), x + 11, y, '#ff9a60', 1); y += 12;
     text('사거리 ' + def.range + (def.range > 1 ? ' 원거리' : ' 근접'), x, y, def.range > 1 ? '#7fd0ff' : '#ffb070', 1); y += 12;
     text('MP ' + (live ? Math.floor(live.mp) + '/' : '') + def.mp, x, y, C.mp, 1); y += 13;
-    wrap(def.skill, 11).forEach(l => { text(l, x, y, def.color, 1); y += 12; });
+    const wounded = roster ? roster.deaths : live && live.team === 'P' ? live.wounded : 0;
+    if (wounded) { wrap('해골 표시! 또 쓰러지면 영구 소멸', 11).forEach(l => { text(l, x, y, '#ff7070', 1); y += 11; }); y += 2; }
+    wrap(esk ? ESK[esk].name : def.skill, 11).forEach(l => { text(l, x, y, esk ? ESK[esk].color : def.color, 1); y += 12; });
     y += 1;
     const maxLines = Math.floor(((roster && S.scene === 'prep' ? BTN_SELL.y : INFO.y + INFO.h - 4) - y) / 11);
-    wrap(def.desc, 11).slice(0, maxLines).forEach(l => { text(l, x, y, C.text, 1); y += 11; });
+    wrap(esk ? ESK[esk].desc : def.desc, 11).slice(0, maxLines).forEach(l => { text(l, x, y, C.text, 1); y += 11; });
     if (roster && S.scene === 'prep') button(BTN_SELL, '판매 ' + sellValue(roster) + 'G', '#8a2a30', true, 1);
   }
 
@@ -2441,6 +2672,38 @@
         case 'star':
           spr('ic_star', f.x, f.y, 1, { a: 1 - k, sx: 0.75, sy: 0.75 });
           break;
+        case 'frost': {
+          ctx.strokeStyle = 'rgba(210,245,255,' + (1 - k).toFixed(3) + ')'; ctx.lineWidth = 3;
+          ctx.beginPath(); ctx.ellipse(f.x, f.y, 10 + 70 * k, (10 + 70 * k) * 0.45, 0, 0, Math.PI * 2); ctx.stroke();
+          break;
+        }
+        case 'cloud': {
+          const a = 0.32 * (k < 0.15 ? k / 0.15 : 1 - Math.max(0, (k - 0.6) / 0.4));
+          for (let dr = -1; dr <= 1; dr++) for (let dc = -1; dc <= 1; dc++) {
+            const r = f.r + dr, c = f.c + dc;
+            if (r < 0 || r >= ROWS || c < 0 || c >= COLS) continue;
+            const q = cellCenter(r, c), wob = Math.sin(S.time * 3 + r * 2 + c) * 3;
+            ctx.fillStyle = 'rgba(110,210,70,' + a.toFixed(3) + ')';
+            ctx.beginPath(); ctx.ellipse(q.x + wob, q.y - 18, 26, 14, 0, 0, Math.PI * 2); ctx.fill();
+          }
+          break;
+        }
+        case 'roar': {
+          for (let j = 0; j < 2; j++) {
+            const kk = clamp(k * 1.3 - j * 0.3, 0, 1);
+            if (kk <= 0 || kk >= 1) continue;
+            ctx.strokeStyle = 'rgba(255,70,90,' + (1 - kk).toFixed(3) + ')'; ctx.lineWidth = 3;
+            ctx.beginPath(); ctx.ellipse(f.x, f.y, 12 + 120 * kk, (12 + 120 * kk) * 0.5, 0, 0, Math.PI * 2); ctx.stroke();
+          }
+          break;
+        }
+        case 'soul': {   // permanently lost: the ghost floats away
+          spr(f.name, f.x, f.y - 50 * k, 2, { tint: 'w', a: 0.75 * (1 - k) });
+          break;
+        }
+        case 'tomb':
+          spr('pr_tomb', f.x, f.y, 1, { a: Math.min(1, f.t / 0.3) });
+          break;
       }
     }
   }
@@ -2472,6 +2735,23 @@
       if (f.crit) textStyled('치명타!', x, f.y - 24, NUM.banner, 1, 'center');
     }
     ctx.globalAlpha = 1;
+  }
+
+  // telegraphed meteor: pulsing red 3x3 on the ground until it lands
+  function drawMeteorMarks() {
+    if (!S.meteors || !S.meteors.length) return;
+    for (const m of S.meteors) {
+      const pulse = 0.25 + 0.2 * Math.abs(Math.sin(S.time * 14));
+      for (let dr = -1; dr <= 1; dr++) for (let dc = -1; dc <= 1; dc++) {
+        const r = m.r + dr, c = m.c + dc;
+        if (r < 0 || r >= ROWS || c < 0 || c >= COLS) continue;
+        ctx.fillStyle = 'rgba(255,60,30,' + pulse.toFixed(3) + ')';
+        ctx.fillRect(BOARD_X + c * CELL_W + 3, BOARD_Y + r * CELL_H + 3, CELL_W - 6, CELL_H - 6);
+      }
+      const p = cellCenter(m.r, m.c), k = clamp(m.t / m.delay, 0, 1);
+      ctx.strokeStyle = '#ffd040'; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.ellipse(p.x, p.y - 26, 70 * (1 - k) + 8, (70 * (1 - k) + 8) * 0.5, 0, 0, Math.PI * 2); ctx.stroke();
+    }
   }
 
   function drawBubbles() {
@@ -2514,7 +2794,7 @@
     const inK = easeOutCubic(clamp(t / 0.14, 0, 1));
     const outK = t > d - 0.16 ? clamp((t - (d - 0.16)) / 0.16, 0, 1) : 0;
     const y0 = 46, bh = 60;
-    const col = c.ally ? c.def.color : C.sel;
+    const col = c.ally ? c.def.color : c.color || C.sel;
     ctx.save();
     ctx.beginPath(); ctx.rect(0, STAGE_Y, W, CONSOLE_Y - STAGE_Y); ctx.clip();
     ctx.translate(Math.round((1 - inK) * -W + outK * outK * W), 0);
@@ -2530,10 +2810,10 @@
     // the caster, popping out of the band
     const frame = c.boss ? 'en_' + c.u.skin : FR[c.def.id + '_cast'] ? c.def.id + '_cast' : c.def.id + '_idle0';
     spr(frame, 78, y0 + bh - 3, c.boss ? 2 : 3, { flip: c.boss ? (MONSTERS[c.u.skin] && MONSTERS[c.u.skin].face === 1) : false });
-    const who = c.boss ? zoneOf(S.level).skins.bossName : c.def.name;
+    const who = c.boss ? zoneOf(S.level).skins.bossName : c.ally ? c.def.name : unitName(c.u);
     text(who + (c.ally ? '' : ' (적)'), 150, y0 + 7, col, 1);
     const st = cutStyles[col] || (cutStyles[col] = { top: '#ffffff', bot: col, out: '#000000', split: 3 });
-    textStyled(c.def.skill + '!', 150, y0 + 30, st, 3, 'left');
+    textStyled(c.skill + '!', 150, y0 + 30, st, 3, 'left');
     if (c.line) text('“' + c.line + '”', 152, y0 + 43, '#f0f0f0', 2);
     ctx.restore();
   }
@@ -2594,7 +2874,7 @@
     ctx.fillStyle = 'rgba(6,17,25,0.82)'; ctx.fillRect(0, 180, W, 64);
     ctx.fillStyle = C.line; ctx.fillRect(0, 180, W, 2); ctx.fillRect(0, 242, W, 2);
     text('레벨 ' + pad3(S.level), W / 2, 188, C.text, 2, 'center');
-    textStyled(z.zone.name, W / 2, 224, NUM.banner, 3, 'center');
+    textStyled(zoneName(S.level), W / 2, 224, NUM.banner, 3, 'center');
     ctx.globalAlpha = 1;
   }
 
@@ -2610,7 +2890,7 @@
       const x = Math.round(lerp(W, 180, k));
       panel(x, 60, 280, 36);
       ctx.strokeStyle = C.sel; ctx.lineWidth = 2; ctx.strokeRect(x + 1, 61, 278, 34);
-      text('보스 · ' + zoneOf(S.level).skins.bossName + ' · 레벨 ' + pad3(S.level), x + 140, 66, C.sel, 1, 'center');
+      text('보스 · ' + zoneOf(S.level).skins.bossName + (S.bosses.length > 1 ? ' ×' + S.bosses.length : '') + ' · 레벨 ' + pad3(S.level), x + 140, 66, C.sel, 1, 'center');
       const f = clamp((t - 0.6) / 0.5, 0, 1);
       ctx.fillStyle = '#dcdceb'; ctx.fillRect(x + 10, 80, 260, 8);
       ctx.fillStyle = '#000'; ctx.fillRect(x + 11, 81, 258, 6);
@@ -2619,13 +2899,15 @@
   }
 
   function drawBossBar() {
-    const b = S.boss;
-    if (!b || S.scene !== 'battle' || S.phase !== 'sim') return;
+    if (!S.boss || S.scene !== 'battle' || S.phase !== 'sim') return;
+    const list = S.bosses, alive = list.filter(u => u.alive).length;
+    const sum = f => list.reduce((acc, u) => acc + Math.max(0, f(u)), 0);
+    const max = sum(u => u.maxHp) || 1;
     ctx.fillStyle = 'rgba(6,17,25,0.8)'; ctx.fillRect(180, 32, 280, 22);
-    text(zoneOf(S.level).skins.bossName, 320, 34, C.sel, 1, 'center');
+    text(zoneOf(S.level).skins.bossName + (list.length > 1 ? '  남은 보스 ' + alive + '/' + list.length : ''), 320, 34, C.sel, 1, 'center');
     ctx.fillStyle = '#dcdceb'; ctx.fillRect(190, 44, 260, 7);
     ctx.fillStyle = '#000'; ctx.fillRect(191, 45, 258, 5);
-    const k = clamp(b.hp / b.maxHp, 0, 1), kt = clamp(b.hpTrail / b.maxHp, 0, 1);
+    const k = clamp(sum(u => u.hp) / max, 0, 1), kt = clamp(sum(u => u.hpTrail) / max, 0, 1);
     ctx.fillStyle = '#f0c050'; ctx.fillRect(191, 45, Math.round(258 * kt), 5);
     ctx.fillStyle = C.hpFoe; ctx.fillRect(191, 45, Math.round(258 * k), 5);
   }
@@ -2658,6 +2940,12 @@
       const line = r.win ? '+' + r.gold + '골드' + (r.interest ? ' (이자 ' + r.interest + ')' : '') + (r.life ? '  ♥+1' : '') + '  →  다음 레벨 ' + pad3(Math.min(MAX_LEVEL, S.level + 1)) : (S.lives - 1 > 0 ? '목숨 -1 (남은 목숨 ' + (S.lives - 1) + ')  +' + r.gold + '골드 · 같은 레벨 재도전' : '남은 목숨이 없어요…');
       text(line, W / 2, 238, r.win ? C.gold : '#ff8080', 1, 'center');
     }
+    if (S.resultT > 0.5 && (r.lost.length || r.wounded.length)) {
+      ctx.fillStyle = 'rgba(30,6,10,0.85)'; ctx.fillRect(0, 266, W, r.lost.length && r.wounded.length ? 30 : 17);
+      let yy = 269;
+      if (r.lost.length) { spr('pr_tomb', W / 2 - textWidth('영구 소멸: ' + r.lost.join(', '), 1) / 2 - 10, yy + 11, 1, { sx: 0.5, sy: 0.5 }); text('영구 소멸: ' + r.lost.join(', '), W / 2, yy, '#ff6060', 1, 'center'); yy += 13; }
+      if (r.wounded.length) text('부상(해골 표시): ' + r.wounded.join(', ') + ' · 또 쓰러지면 소멸', W / 2, yy, '#ffb070', 1, 'center');
+    }
     if (S.resultT > 0.9 && Math.floor(S.time * 2) % 2 === 0) text('화면을 누르면 계속', W / 2, 252, '#fff', 1, 'center');
   }
 
@@ -2672,7 +2960,7 @@
 
   function drawTitle() {
     // cycle through the zones the player has reached, 8 s each with a 600 ms crossfade
-    const nz = Math.max(1, ZONES.filter(q => q.from <= Math.max(1, S.best)).length);
+    const nz = Math.max(1, Math.min(ZONES.length, Math.floor((Math.max(1, S.best) - 1) / 5) + 1));
     const slot = Math.floor(S.time / 8);
     const z = ZONES[slot % nz];
     const layer = getZoneLayer(z);
@@ -2788,6 +3076,7 @@
     ctx.setTransform(1, 0, 0, 1, S.shakeX, S.shakeY);
     drawStage(z, S.time);
     drawBoard();
+    drawMeteorMarks();
     drawFxLayer(true);
     if (S.scene === 'prep') drawPrepUnits();
     else {
@@ -2908,7 +3197,7 @@
     if (S.scene === 'battle') {
       if (S.phase === 'intro') {
         S.introT += rdt;
-        if (S.boss && S.introT > 0.2 && S.introT - rdt <= 0.2) { addSpr('fx_spawn1', S.boss.x, S.boss.y - 40, { dur: 0.6, s: 4, grow: true }); S.trauma = Math.min(1, S.trauma + 0.45); }
+        if (S.boss && S.introT > 0.2 && S.introT - rdt <= 0.2) { S.bosses.forEach(b => addSpr('fx_spawn1', b.x, b.y - 40, { dur: 0.6, s: 4, grow: true })); S.trauma = Math.min(1, S.trauma + 0.45); }
         if (S.introT >= S.introLen - 0.5 && S.introT - rdt < S.introLen - 0.5) Sound.play('fight');
         if (S.introT >= S.introLen) S.phase = 'sim';
       } else if (S.hitstop > 0) {
@@ -3296,6 +3585,8 @@
     genWave: L => genWave(L).map(e => ({ id: e.def.id, skin: e.skin, r: e.r, c: e.c, boss: e.boss })),
     setLevel: L => { S.level = clamp(L | 0, 1, MAX_LEVEL); S.wave = genWave(S.level); },
     zoneOf: L => zoneOf(L).id,
+    cap: L => playerCap(L),
+    dims: { ROWS, COLS, PCOLS, BOARD_X, BOARD_Y, CELL_W, CELL_H, BENCH_N, BENCH_X, BENCH_Y, SLOT_W, SLOT_H, SLOT_GAP },
     state: S
   };
 
