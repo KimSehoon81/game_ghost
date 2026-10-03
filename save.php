@@ -24,20 +24,21 @@ header('X-Content-Type-Options: nosniff');
 
 gt_session_start();
 
-function respond(array $data, int $code = 200): void
+// (No void / nullable return types: the API runs on PHP 7.0+.)
+function respond(array $data, int $code = 200)
 {
     http_response_code($code);
     echo json_encode($data, JSON_UNESCAPED_SLASHES);
     exit;
 }
 
-function fail(string $error, int $code = 400): void
+function fail(string $error, int $code = 400)
 {
     respond(['ok' => false, 'error' => $error], $code);
 }
 
 /** Strict integer in [min,max], or null. Accepts ints and digit strings only. */
-function int_in($v, int $min, int $max): ?int
+function int_in($v, int $min, int $max)
 {
     if (is_int($v)) {
         $n = $v;
@@ -51,7 +52,8 @@ function int_in($v, int $min, int $max): ?int
     return ($n >= $min && $n <= $max) ? $n : null;
 }
 
-function valid_player_id($v): ?string
+/** 32 lowercase hex chars, or null. */
+function valid_player_id($v)
 {
     return (is_string($v) && preg_match('/^[a-f0-9]{32}$/D', $v)) ? $v : null;
 }
@@ -59,7 +61,7 @@ function valid_player_id($v): ?string
 function fetch_top(PDO $db): array
 {
     $stmt = $db->query(
-        'SELECT id, initial, level_reached, DATE_FORMAT(created_at, "%Y-%m-%d") AS created_at
+        'SELECT id, initial, level_reached, DATE_FORMAT(created_at, \'%Y-%m-%d\') AS created_at
            FROM rankings
           ORDER BY level_reached DESC, created_at ASC, id ASC
           LIMIT ' . (int) GT_TOP_N
@@ -169,8 +171,8 @@ try {
             $_SESSION['gt_run_level'] = $level;
 
             $stmt = $db->prepare(
-                'INSERT INTO user_progress (player_id, level, gold, lives, power, best_level, team_json)
-                 VALUES (:pid, :lvl, :gold, :lives, :power, :lvl2, :team)
+                'INSERT INTO user_progress (player_id, level, gold, lives, power, best_level, team_json, created_at)
+                 VALUES (:pid, :lvl, :gold, :lives, :power, :lvl2, :team, NOW())
                  ON DUPLICATE KEY UPDATE
                     level = VALUES(level), gold = VALUES(gold), lives = VALUES(lives),
                     power = VALUES(power), team_json = VALUES(team_json),

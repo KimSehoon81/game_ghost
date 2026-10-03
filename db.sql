@@ -29,7 +29,7 @@ CREATE TABLE IF NOT EXISTS `user_progress` (
   `power`       INT              NOT NULL DEFAULT 0,
   `best_level`  INT              NOT NULL DEFAULT 1,
   `team_json`   TEXT             NULL,
-  `created_at`  TIMESTAMP        NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `created_at`  TIMESTAMP        NULL DEFAULT NULL,   -- set by save.php (MySQL/MariaDB 5.5 allow one auto TIMESTAMP)
   `updated_at`  TIMESTAMP        NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`),
   UNIQUE KEY `uq_player` (`player_id`)

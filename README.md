@@ -18,15 +18,18 @@ All art comes from **one indexed-colour sprite atlas** built from the GHOST-TACT
 
 ## Install
 
-1. Copy the folder into your web root (e.g. `htdocs/ghost-tactics/`).
-2. Set your DB credentials in `config.php`, or with environment variables
+1. Copy the game into your web root (e.g. `htdocs/ghost-tactics/`).
+   A server only needs `index.php`, `save.php`, `config.php`, `game.js`, `sound.js`, `sprites.js`, `sprites.png` and `.htaccess`.
+2. Set your DB credentials in `config.php` (`DB_HOST` defaults to `localhost`), or with environment variables
    (`GT_DB_HOST`, `GT_DB_PORT`, `GT_DB_NAME`, `GT_DB_USER`, `GT_DB_PASS`, e.g. via Apache `SetEnv`).
 3. Open `http://localhost/ghost-tactics/`.
 
-With `GT_AUTO_MIGRATE` on (the default), the database and tables are created on the first request.
-If that isn't possible, import the schema yourself: `mysql -u root -p < db.sql`.
+With `GT_AUTO_MIGRATE` on (the default), missing tables are created on the first request; the DB user then needs the `CREATE` privilege until they exist.
+You can also import the schema yourself: `mysql -u root -p < db.sql`. After that, a user with only `SELECT, INSERT, UPDATE` is enough.
 
-Requirements: PHP 7.4+ with `pdo_mysql`, and MySQL 5.7+ or MariaDB 10.3+.
+Requirements: PHP 7.0+ with `pdo_mysql`, and MySQL or MariaDB 5.5+.
+It is tested on PHP 7.0, 7.2, 7.4 and 8.3, with MariaDB 5.5 and 10.11.
+The bundled `.htaccess` needs `AllowOverride All`. If Apache answers with a 500 error, delete `.htaccess`: the game still works, it just stops blocking direct access to files like `db.sql`.
 If the database is unreachable, the game still runs: progress and high scores fall back to `localStorage`.
 
 **Popup launcher:**
