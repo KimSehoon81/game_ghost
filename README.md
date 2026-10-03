@@ -91,13 +91,13 @@ Without `zopfli` the build still works, but the PNG comes out larger.
 - **Deploy** by dragging, or tap a ghost and then tap a cell. Each side is 3×5. You can field 3 ghosts at level 1, one more every 3 levels, up to **9** at level 18. Enemies grow to **15** by level 29.
 - **Merge:** 3 identical ghosts make a ★2 (×1.8 stats), and 3 ★2s make a ★3 (×3.24).
 - **Synergy:** 2 or 4 distinct Western ghosts give +15% or +35% HP. 2 or 4 distinct Eastern ghosts give +15% or +35% ATK.
-- **Altar:** a permanent +6% HP/ATK for the whole team, multiplicative.
+- **Upgrade (업그레이드 button):** a permanent +6% HP/ATK for the whole team, multiplicative. The price rises each time (4, 6, 8, ... gold). It was called "제단" (altar) before; the code still calls it `altar`.
 - **Fight!** Units target the nearest foe, walk the grid, attack in range, fill MP and cast their skill (with a 200 ms telegraph).
 - Winning pays gold (plus interest); a loss still pays enough to rebuild (it grows with the level). Every 10th level also gives back a life (up to 5). Losing costs a life; at 0 lives the game is over.
 - **Permanent death:** a ghost that falls in battle gets a skull mark. If it falls a second time it is gone for good: a soul rises, a tombstone stays on its cell, and the result screen lists it. Its soul refunds half its sell value in gold. Merging three copies into a higher star heals the mark.
 - **Placement preview:** while you drag or select a ghost, its attack range is shaded on the board (orange for melee, blue for ranged).
 - **Help:** the **게임 방법** button on the title, the `?` button in the prep HUD, or `H` opens a short how-to-play page. It also opens once on the first new game.
-- Keys: `F`/`Space` fight · `R` reroll · `A` altar · `1-5` buy · `S` sell · `M` mute · `H` help.
+- Keys: `F`/`Space` fight · `R` reroll · `A` upgrade · `1-5` buy · `S` sell · `M` mute · `H` help.
 
 ### Stages
 
@@ -206,6 +206,6 @@ There is also light anti-tamper protection:
 
 - **Results are saved instantly.** A battle's result is saved the moment it ends, so reloading on the result screen can't undo a lost life.
 - **Closing mid-battle** resumes at that level's prep screen with the pre-battle team and gold. The first quit on a level is free; quitting the same level again costs a life, so reloading can't be used to dodge a loss.
-- **Prep changes** (buy, sell, move, reroll, altar) are saved locally, debounced, so a reload keeps them.
+- **Prep changes** (buy, sell, move, reroll, upgrade) are saved locally, debounced, so a reload keeps them.
 - **CONTINUE** shows the saved level and lives, and picks the newest snapshot (server or local), so progress made offline isn't rolled back.
 - **Network calls time out after 5 s.** The game-over screen never waits on a stalled leaderboard request.

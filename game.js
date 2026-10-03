@@ -49,7 +49,7 @@
       BTN_SOUND = { x: 596, y: 3, w: 40, h: 22 };
       BTN_HELP = { x: 552, y: 3, w: 30, h: 22 };
       HIT_SOUND = { x: 586, y: 0, w: 54, h: 30 };
-      SYN = { x: 4, y: 31, w: 168, h: 42 };       // synergy strip over the sky
+      SYN = { x: 4, y: 31, w: 168, h: 55 };       // synergy strip over the sky
       INFO = { x: 566, y: 116, w: 72, h: 192 };
       BTN_SELL = { x: 569, y: 268, w: 66, h: 36 };
       SELL_ZONE = { x: SHOP_X - 4, y: SHOP_Y - 4, w: BTN_REROLL.x - SHOP_X, h: H - SHOP_Y + 4 };
@@ -86,7 +86,7 @@
       MID_Y = BOARD_Y + PCOLS * CELL_H;
       FLOOR_Y = STAGE_Y + 177;
       // right column: synergy + info / help / sell
-      SYN = { x: 344, y: STAGE_Y + 4, w: 132, h: 44 };
+      SYN = { x: 344, y: STAGE_Y + 4, w: 132, h: 57 };
       INFO = { x: 344, y: SYN.y + SYN.h + 4, w: 132, h: Math.min(300, CONSOLE_Y - 10 - (SYN.y + SYN.h + 4)) };
       BTN_SELL = { x: INFO.x + 6, y: INFO.y + INFO.h - 44, w: INFO.w - 12, h: 38 };
       SELL_ZONE = { x: 0, y: SHOP_Y - 4, w: W, h: CARD_H + 8 };
@@ -992,12 +992,12 @@
 
   function altar() {
     const cost = altarCost();
-    if (S.gold < cost) { flash('골드가 부족해요'); Sound.play('error'); return; }
+    if (S.gold < cost) { flash('골드가 부족해요 · 업그레이드 ' + cost + '골드'); Sound.play('error'); return; }
     S.gold -= cost;
     S.power++;
     Sound.play('power');
     saveLocalSoon();
-    flash('제단 ' + S.power + '단계: 모든 유령 +6%');
+    flash('업그레이드 ' + S.power + '단계! 모든 유령 영구 +6%');
     S.roster.forEach(u => {
       if (u.loc !== 'board') return;
       const p = cellCenter(u.r, u.c);
@@ -2402,7 +2402,7 @@
     const bc = S.scene === 'battle' || S.scene === 'result' ? S.units.filter(u => u.team === 'P' && u.alive).length : boardCount();
     text('유닛 ' + bc + '/' + playerCap(S.level), P ? 304 : 340, P ? 5 : 6, C.hover, 2);
     text('최고 ' + pad3(S.best), P ? 236 : 466, P ? r2 + 2 : 4, C.text, 1);
-    text('제단 ' + S.power, P ? 300 : 466, P ? r2 + 2 : 15, '#b080ff', 1);
+    text('업그레이드 ' + S.power + '단계', P ? BTN_HELP.x - 8 : 466, P ? r2 + 2 : 15, '#b080ff', 1, P ? 'right' : 'left');
     button(BTN_SOUND, Sound.isMuted() ? '끔' : '소리', Sound.isMuted() ? '#3a4656' : '#2a5a8a', true, 1);
     if (S.scene === 'prep') button(BTN_HELP, '?', '#5a4a1a', true, 1);
     if (S.saveT > 0) text('저장됨', P ? W - 6 : BTN_HELP.x - 6, P ? 7 : 9, 'rgba(160,230,170,' + clamp(S.saveT, 0, 1).toFixed(2) + ')', 1, 'right');
@@ -2735,7 +2735,12 @@
       text('여기에 놓으면 판매 +' + sellValue(S.drag.u) + '골드', z.x + z.w / 2, SHOP_Y + CARD_H / 2 - 7, '#fff', 2, 'center');
     }
     button(BTN_REROLL, '새로고침', '#2a5a8a', S.gold >= REROLL_COST, 1, costLabel(REROLL_COST, S.gold >= REROLL_COST));
-    button(BTN_ALTAR, '제단', '#5a2a8a', S.gold >= altarCost(), 1, costLabel(altarCost(), S.gold >= altarCost()));
+    const upOk = S.gold >= altarCost();   // 'altar' internally: the team-wide permanent +6% upgrade
+    button(BTN_ALTAR, '', '#5a2a8a', upOk, 1, (cx, cy, on) => {
+      text('업그레이드', cx, BTN_ALTAR.y + 6, on ? '#fff' : '#5a6a7e', 1, 'center');
+      text('팀 전체 +6%', cx, BTN_ALTAR.y + 18, on ? '#d8c0ff' : '#4a566a', 1, 'center');
+      costLabel(altarCost(), on)(cx, cy);
+    });
     button(BTN_FIGHT, '전투 시작!', '#b82a30', boardCount() > 0, 3);
     ctx.restore();
   }
@@ -2774,7 +2779,8 @@
     text(s.e >= 4 ? '공격+35%' : s.e >= 2 ? '공격+15%' : '2명: 공격↑', x + 50, SYN.y + 17, s.e >= 2 ? '#fff' : C.dim, 1);
     const pm = powerMul(), m = levelMultipliers(S.level);
     const mf = v => (v < 100 ? v.toFixed(2) : fmt(v));
-    text('제단 x' + (pm < 100 ? pm.toFixed(2) : fmt(pm)) + ' · 적 x' + mf(m.hp), x, SYN.y + 30, '#b8a0ff', 1);
+    text('업그레이드 x' + (pm < 100 ? pm.toFixed(2) : fmt(pm)), x, SYN.y + 30, '#b8a0ff', 1);
+    text('적 능력 x' + mf(m.hp), x, SYN.y + 43, '#ffa0a0', 1);
   }
 
   function drawInfo() {

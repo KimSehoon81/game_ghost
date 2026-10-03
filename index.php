@@ -252,7 +252,8 @@ $v = static function (string $f): string {
       <li><b>이기면 다음 레벨!</b> 레벨이 오를수록 적도 강해져요</li>
       <li>배치 인원은 레벨에 따라 늘어 <b>최대 9명</b> (적은 최대 15마리)</li>
       <li>같은 유령 <b>3마리 = ★ 강화</b></li>
-      <li>서양·동양 2종/4종 = <b>시너지</b> · <b>제단</b> = 영구 강화</li>
+      <li>서양·동양 2종/4종 = <b>시너지</b></li>
+      <li><b>업그레이드</b> 버튼 = 골드로 <b>모든 유령 영구 +6%</b> (쓸수록 값이 올라요)</li>
       <li>지면 목숨 -1 (0이 되면 끝)</li>
     </ul>
     <h3>▶ 보스와 강한 적</h3>
@@ -277,7 +278,7 @@ $v = static function (string $f): string {
       <li><b>자동 저장</b>: 꺼도 [이어하기]로 계속</li>
       <li>전투 중에 꺼지면 그 레벨 <b>준비 화면부터</b><br>(같은 레벨에서 또 끄면 목숨 -1)</li>
     </ul>
-    <p class="note">키보드: F 전투 · R 새로고침 · A 제단 · 1~5 구매 · S 판매 · M 소리 · H 도움말</p>
+    <p class="note">키보드: F 전투 · R 새로고침 · A 업그레이드 · 1~5 구매 · S 판매 · M 소리 · H 도움말</p>
     <button type="button" class="btn" id="helpClose">알겠어요!</button>
   </div>
 </div>
