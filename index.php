@@ -22,7 +22,7 @@ $v = static function (string $f): string {
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <title>Ghost-Tactics</title>
-<link rel="preload" as="image" href="sprites.webp?v=<?= htmlspecialchars($assetVer, ENT_QUOTES, 'UTF-8') ?>" type="image/webp">
+<link rel="preload" as="image" href="sprites.png?v=<?= htmlspecialchars($assetVer, ENT_QUOTES, 'UTF-8') ?>">
 <style>
   :root {
     --bg: #050d14;
@@ -59,8 +59,8 @@ $v = static function (string $f): string {
     cursor: pointer;
   }
 
-  /* Mobile / small windows: full-viewport scaling, keep 4:3. */
-  @media (max-width: 700px), (max-height: 520px), (pointer: coarse) {
+  /* Mobile / windows smaller than the stage: full-viewport scaling, keep 4:3. */
+  @media (max-width: 639px), (max-height: 479px), (pointer: coarse) {
     #stage {
       width: 100vw; height: 75vw;
       max-height: 100vh; max-width: 133.333vh;

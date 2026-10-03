@@ -26,6 +26,8 @@ define('GT_AUTO_MIGRATE', true);
 
 define('GT_MAX_LEVEL', 999);
 define('GT_TOP_N', 10);
+// Minimum seconds per level a run may advance (the fastest real win is ~1.6 s).
+define('GT_ADV_MIN_S', 1.0);
 
 /**
  * Shared PDO instance (lazy). Throws PDOException on failure.

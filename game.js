@@ -6,7 +6,7 @@
  *  - drag & drop / tap-to-place, 8-slot bench, 5-card shop, 3-copy star merges
  *  - procedural levels 1..999:  HP = BaseHP*1.045^L,  ATK = BaseATK*1.038^L
  *  - nearest-target grid AI, MP bars and 10 unique ghost skills
- *  - one indexed-colour atlas (sprites.png / sprites.webp) drawn at integer scale,
+ *  - one indexed-colour atlas (sprites.png, ~88 KB) drawn at integer scale,
  *    tint variants derived at runtime (0 extra bytes), everything else procedural
  *  - game feel: hit-stop, trauma shake, flash, knockback, squash & stretch,
  *    cast telegraphs, crit numbers, slow-motion finales, banners
@@ -296,10 +296,8 @@
 
   (function loadAtlas() {
     const ver = window.GT_ASSET_VER ? '?v=' + encodeURIComponent(window.GT_ASSET_VER) : '';
-    let webp = false;
-    try { webp = document.createElement('canvas').toDataURL('image/webp').indexOf('data:image/webp') === 0; } catch (e) { webp = false; }
     const img = new Image();
-    let fellBack = !webp;
+    let retried = false;
     img.onload = () => {
       atlas = img;
       TINT.w = tintCanvas('#ffffff'); TINT.r = tintCanvas('#ff3030');
@@ -308,10 +306,10 @@
       zoneLayer = null;
     };
     img.onerror = () => {
-      if (!fellBack) { fellBack = true; img.src = 'sprites.png' + ver; }
+      if (!retried) { retried = true; img.src = 'sprites.png?r=' + Date.now(); }   // one cache-busting retry
       else atlasState = 'error';
     };
-    img.src = (webp ? 'sprites.webp' : 'sprites.png') + ver;
+    img.src = 'sprites.png' + ver;
   })();
 
   // draw frame `name` with its anchor at (x, y), integer scale s (default 2)
@@ -321,13 +319,15 @@
     if (!f || atlasState !== 'ready') return;
     s = s || 2;
     const src = o && o.tint ? TINT[o.tint] : atlas;
-    const kx = s * (o && o.sx || 1), ky = s * (o && o.sy || 1);
     const a = o && o.a != null ? o.a : 1;
     if (a <= 0.01) return;
     const prev = ctx.globalAlpha;
     if (a < 1) ctx.globalAlpha = prev * a;
-    const w = Math.round(f[2] * kx), h = Math.round(f[3] * ky);
-    const ax = Math.round(f[4] * kx), ay = Math.round(f[5] * ky);
+    // squash/stretch adds or drops whole native rows/columns (no uneven pixels)
+    const nw = o && o.sx ? Math.max(1, Math.round(f[2] * o.sx)) : f[2];
+    const nh = o && o.sy ? Math.max(1, Math.round(f[3] * o.sy)) : f[3];
+    const w = nw * s, h = nh * s;
+    const ax = Math.round(f[4] * nw / f[2]) * s, ay = Math.round(f[5] * nh / f[3]) * s;
     if (o && o.flip) {
       ctx.save();
       ctx.translate(Math.round(x), Math.round(y));
@@ -489,21 +489,37 @@
   // =====================================================================
   //  NETWORK (save.php) with graceful offline fallback
   // =====================================================================
+  function timed(ms) {
+    if (typeof AbortController === 'undefined') return undefined;
+    const c = new AbortController();
+    setTimeout(() => c.abort(), ms);
+    return c.signal;
+  }
   const API = {
     token: (document.querySelector('meta[name="csrf-token"]') || {}).content || '',
-    async post(action, data) {
+    async post(action, data, retried) {
       const res = await fetch('save.php', {
-        method: 'POST', credentials: 'same-origin',
+        method: 'POST', credentials: 'same-origin', signal: timed(5000),
         headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': API.token },
         body: JSON.stringify(Object.assign({ action }, data || {}))
       });
       let j = null;
       try { j = await res.json(); } catch (e) { throw new Error('BAD_RESPONSE'); }
+      // the PHP session expired while idle: fetch a fresh token and retry once
+      if (j && j.error === 'BAD_CSRF' && !retried && await API.refreshToken()) return API.post(action, data, true);
       if (!j || !j.ok) throw new Error((j && j.error) || 'HTTP_' + res.status);
       return j;
     },
+    async refreshToken() {
+      try {
+        const res = await fetch('save.php?action=token', { credentials: 'same-origin', cache: 'no-store', signal: timed(5000) });
+        const j = await res.json();
+        if (j && j.ok && typeof j.token === 'string' && j.token) { API.token = j.token; return true; }
+      } catch (e) { /* offline */ }
+      return false;
+    },
     async rankings() {
-      const res = await fetch('save.php?action=rankings', { credentials: 'same-origin', cache: 'no-store' });
+      const res = await fetch('save.php?action=rankings', { credentials: 'same-origin', cache: 'no-store', signal: timed(5000) });
       const j = await res.json();
       if (!j.ok) throw new Error(j.error || 'ERR');
       return j.rankings;
@@ -618,8 +634,9 @@
     const merged = tryMerge(id, 1);
     const shown = merged || u;
     shown.pop = 0.25;
+    saveLocalSoon();
     const p = shown.loc === 'board' ? cellCenter(shown.r, shown.c) : slotCenter(shown.slot);
-    addSpr(shown.loc === 'board' ? d.id + '_spawn' : 'fx_spawn1', p.x, p.y - (shown.loc === 'board' ? 6 : 14), { dur: 0.5, s: shown.loc === 'board' ? 1 : 1, grow: true });
+    addSpr(shown.loc === 'board' ? d.id + '_spawn' : 'fx_spawn1', p.x, p.y - (shown.loc === 'board' ? 6 : 14), { dur: 0.5, s: 2, grow: true });
     S.sel = { kind: 'roster', u: shown };
   }
 
@@ -631,6 +648,9 @@
     const keep = copies[0];
     const gone = copies.slice(1, 3);
     S.roster = S.roster.filter(u => gone.indexOf(u) < 0);
+    // a copy that was being dragged / selected no longer exists: never drop or sell it later
+    if (S.drag && gone.indexOf(S.drag.u) >= 0) S.drag = null;
+    if (S.sel && gone.indexOf(S.sel.u) >= 0) S.sel = { kind: 'roster', u: keep };
     if (keep.slot === -99) keep.slot = Math.max(0, freeSlot());
     keep.star = star + 1;
     keep.pop = 0.3;
@@ -649,11 +669,14 @@
   }
 
   function sell(u) {
+    if (S.roster.indexOf(u) < 0) return;          // already sold / merged away
     S.roster = S.roster.filter(x => x !== u);
     S.gold += sellValue(u);
     if (S.sel && S.sel.u === u) S.sel = null;
+    if (S.drag && S.drag.u === u) S.drag = null;
     Sound.play('sell');
     flash('SOLD +' + sellValue(u) + 'G');
+    saveLocalSoon();
   }
 
   function reroll() {
@@ -661,6 +684,7 @@
     S.gold -= REROLL_COST;
     refreshShop();
     Sound.play('spin');
+    saveLocalSoon();
   }
 
   function altar() {
@@ -669,6 +693,7 @@
     S.gold -= cost;
     S.power++;
     Sound.play('power');
+    saveLocalSoon();
     flash('ALTAR LV ' + S.power + ': ALL GHOSTS +6%');
     S.roster.forEach(u => {
       if (u.loc !== 'board') return;
@@ -680,6 +705,7 @@
 
   // move roster unit to the cell / slot under p (swap if occupied); returns true on change
   function dropAt(u, p, cellPoint) {
+    if (S.roster.indexOf(u) < 0) return false;    // stale reference (sold / merged during the drag)
     const cell = cellPoint ? dropCell(cellPoint) : cellAt(p);
     if (cell) {
       if (cell.c >= PCOLS) { flash('DEPLOY ON YOUR SIDE (LEFT)'); Sound.play('error'); return false; }
@@ -695,6 +721,7 @@
       }
       u.loc = 'board'; u.r = cell.r; u.c = cell.c; u.pop = 0.2;
       Sound.play('place');
+      saveLocalSoon();
       return true;
     }
     const slot = slotAt(p);
@@ -708,6 +735,7 @@
       }
       u.loc = 'bench'; u.slot = slot; u.pop = 0.2;
       Sound.play('place');
+      saveLocalSoon();
       return true;
     }
     if (inShopZone(p)) { sell(u); return true; }
@@ -726,12 +754,12 @@
     showZoneCard();
   }
 
-  function serialize() {
-    return {
-      v: 2, level: S.level, gold: S.gold, lives: S.lives, power: S.power,
+  function serialize(over) {
+    return Object.assign({
+      v: 2, t: Date.now(), level: S.level, gold: S.gold, lives: S.lives, power: S.power,
       roster: S.roster.map(u => ({ id: u.id, star: u.star, loc: u.loc, r: u.r, c: u.c, slot: u.slot })),
       shop: S.shop
-    };
+    }, over || {});
   }
 
   function restore(st) {
@@ -765,11 +793,20 @@
     return true;
   }
 
-  function saveProgress() {
-    const st = serialize();
+  // write a run snapshot locally and to the server
+  function persist(st) {
     store.set('gt_save', JSON.stringify(st));
     S.hasSave = true;
-    API.post('save_progress', { player_id: PID, level: S.level, gold: S.gold, lives: S.lives, power: S.power, state: st }).catch(() => {});
+    API.post('save_progress', { player_id: PID, level: st.level, gold: st.gold, lives: st.lives, power: st.power, state: st }).catch(() => {});
+  }
+  function saveProgress() { persist(serialize()); }
+
+  // prep changes (buy / sell / move / reroll / altar) survive a reload: debounced, local only
+  let localSaveTimer = 0;
+  function saveLocalSoon() {
+    if (S.scene !== 'prep') return;
+    clearTimeout(localSaveTimer);
+    localSaveTimer = setTimeout(() => { if (S.scene === 'prep') { store.set('gt_save', JSON.stringify(serialize())); S.hasSave = true; } }, 250);
   }
 
   function clearProgress() {
@@ -779,12 +816,16 @@
   }
 
   async function continueGame() {
-    let st = null;
+    // newest snapshot wins: highest level, then latest timestamp. A local save that is
+    // ahead of the server (offline play) is kept instead of silently rolled back.
+    let server = null, local = null;
     try {
       const j = await API.post('load_progress', { player_id: PID });
-      if (j.progress && j.progress.state) st = j.progress.state;
+      if (j.progress && j.progress.state) server = j.progress.state;
     } catch (e) { /* offline: local save */ }
-    if (!st) { try { st = JSON.parse(store.get('gt_save') || 'null'); } catch (e) { st = null; } }
+    try { local = JSON.parse(store.get('gt_save') || 'null'); } catch (e) { local = null; }
+    const rank = s => (s && typeof s === 'object' ? (parseInt(s.level, 10) || 0) * 1e13 + (Number(s.t) || 0) : -1);
+    const st = rank(local) > rank(server) ? local : server;
     if (!restore(st)) { flash('NO SAVE FOUND'); Sound.play('error'); S.hasSave = false; return; }
     S.sel = null;
     enterPrep(false);
@@ -807,8 +848,17 @@
     Sound.play('zonefanfare');
   }
 
+  // Run snapshots are committed pessimistically so reloading can't undo a battle:
+  // leaving mid-fight counts as a loss, and the result is saved the moment it happens.
+  function commitRun(level, lives) {
+    if (lives <= 0) { store.del('gt_save'); S.hasSave = false; API.post('clear_progress', { player_id: PID }).catch(() => {}); }
+    else persist(serialize({ level, lives }));
+  }
+
   function startBattle() {
     if (boardCount() === 0) { flash('PLACE A GHOST ON THE BOARD!'); Sound.play('error'); return; }
+    clearTimeout(localSaveTimer);
+    commitRun(S.level, S.lives - 1);
     S.grid = Array.from({ length: ROWS }, () => new Array(COLS).fill(null));
     S.units = [];
     const board = S.roster.filter(u => u.loc === 'board');
@@ -864,6 +914,9 @@
     const gold = win ? 5 + Math.floor(S.level / 4) + interest + (boss ? 5 : 0) : 3 + interest;
     S.result = { win, timeout, gold, interest, boss: win && boss, life: win && boss && S.lives < MAX_LIVES };
     S.gold += gold;
+    // commit the outcome now (applyResult only animates the transition)
+    if (win) commitRun(S.level >= MAX_LEVEL ? S.level : S.level + 1, S.level >= MAX_LEVEL ? 0 : S.lives + (S.result.life ? 1 : 0));
+    else commitRun(S.level, S.lives - 1);
     S.scene = 'result';
     S.resultT = 0;
     S.timeScale = 1;
@@ -932,9 +985,15 @@
   }
 
   function afterGameOver() {
-    if (S.modal || !S.final || S.final.checking || S.final.qualifies === null) return;
-    S.final.checking = true;
+    if (S.modal || !S.final || S.final.checking) return;
     const f = S.final;
+    if (f.qualifies === null) {
+      // leaderboard request still pending: never trap the player, fall back to local scores
+      if (S.gameoverT < 6) return;
+      f.list = LocalRank.list(); f.online = false;
+      f.qualifies = f.list.length < 10 || f.level > (f.list[9].level_reached | 0);
+    }
+    f.checking = true;
     if (f.qualifies) UI.showEntry(f.level, f.online);
     else UI.showRanking(f.list, -1, f.online ? '' : 'OFFLINE - LOCAL SCORES', () => wipeTo(toTitle));
   }
@@ -1095,6 +1154,16 @@
     Sound.play('cast');
   }
 
+  // can the unit's skill fire right now? (mirrors the guards inside castSkill)
+  function skillReady(u, t) {
+    const inRange = t && t.alive && isHostile(u, t) && cheb(u, t) <= u.range;
+    switch (u.def.id) {
+      case 'dracula': case 'frank': case 'gumiho': case 'palcheok': return !!inRange;
+      case 'succubus': return S.units.some(v => isHostile(u, v) && v.charm <= 0 && cheb(u, v) <= u.range);
+      default: return true;
+    }
+  }
+
   // ---- the 10 unique active skills ----------------------------------------
   function castSkill(u) {
     const foes = hostilesOf(u);
@@ -1112,7 +1181,7 @@
         const dealt = dealDamage(u, t, u.atk * 2.5, { kind: 'skill', noLifesteal: true });
         heal(u, dealt, true);
         stream(t.x, t.y - 26, u.x, u.y - 26, '#e03030', 16);
-        addSpr('dracula_spawn', u.x, u.y - 8, { dur: 0.5, s: 1 });
+        addSpr('dracula_spawn', u.x, u.y - 8, { dur: 0.5, s: 2 });
         Juice.stop(J.stop.skill, J.shake.skill);
         Sound.play('bloodfeast');
         return true;
@@ -1124,7 +1193,7 @@
         addSpr('frank_sfx', t.x, t.y - 16, { dur: 0.45, s: 2 });
         hit.forEach(v => {
           S.fx.push({ type: 'bolt', x: u.x, y: u.y - 34, x2: v.x, y2: v.y - 26, t: 0, dur: 0.3 });
-          addSpr('frank_spawn', v.x, v.y - 4, { dur: 0.4, s: 1 });
+          addSpr('frank_spawn', v.x, v.y - 4, { dur: 0.4, s: 2 });
           dealDamage(u, v, u.atk * 1.5, sk);
           if (v.alive) v.stun = Math.max(v.stun, 1.5);
         });
@@ -1147,7 +1216,7 @@
         announce(u);
         S.fx.push({ type: 'reticle', u: v, t: 0, dur: 0.5, color: C.sel });
         S.fx.push({ type: 'bandage', x: u.x, y: u.y - 30, u: v, t: 0, dur: 0.55 });
-        addSpr('mummy_spawn', v.x, v.y - 6, { dur: 0.6, s: 1 });
+        addSpr('mummy_spawn', v.x, v.y - 6, { dur: 0.6, s: 2 });
         dealDamage(u, v, u.atk * 1.2, sk);
         if (v.alive) v.stun = Math.max(v.stun, 2.5);
         Juice.stop(J.stop.skill, J.shake.skill);
@@ -1159,7 +1228,7 @@
         u.rage = 4;
         heal(u, u.maxHp * 0.15, true);
         squash(u, 0.9, 1.15, 0.12);
-        addSpr('werewolf_spawn', u.x, u.y - 8, { dur: 0.5, s: 1, behind: true });
+        addSpr('werewolf_spawn', u.x, u.y - 8, { dur: 0.5, s: 2, behind: true });
         addSpr('werewolf_sfx', u.x, u.y - 20, { dur: 0.4, s: 2, flip: u.face < 0 });
         addSpr('fx_heal0', u.x - 10, u.y - 40, { dur: 0.6, s: 2, rise: 16 });
         addSpr('fx_heal0', u.x + 12, u.y - 34, { dur: 0.6, s: 2, rise: 16 });
@@ -1185,11 +1254,11 @@
       case 'jiangshi': { // Steel Talisman
         announce(u);
         u.shield = u.maxHp * 0.5; u.shieldT = 5;
-        addSpr('jiangshi_spawn', u.x, u.y - 30, { dur: 0.5, s: 1, grow: true });
+        addSpr('jiangshi_spawn', u.x, u.y - 30, { dur: 0.5, s: 2, grow: true });
         addSpr('fx_buff1', u.x, u.y - 30, { dur: 0.5, s: 2 });
         S.flashBoard = { color: 'rgba(240,192,80,0.18)', t: 0.05 };
-        S.units.forEach(v => {
-          if (v !== u && v.alive && v.team === u.team && cheb(u, v) <= 1) {
+        S.units.forEach(v => {   // allies = the side it currently fights for (charm flips it)
+          if (v !== u && v.alive && effTeam(v) === effTeam(u) && cheb(u, v) <= 1) {
             v.shield = Math.max(v.shield, v.maxHp * 0.2); v.shieldT = 5;
             addSpr('fx_buff1', v.x, v.y - 30, { dur: 0.5, s: 2 });
           }
@@ -1201,7 +1270,7 @@
         if (!inRange) return false;
         announce(u);
         for (let i = 0; i < 3; i++) S.floats.push({ str: 'PO', x: t.x - 16 + i * 16, y: t.y - 70, st: NUM.skill, scale: 2, t: -i * 0.12, dur: 0.7, vx: 0, vy: -30, g: 0 });
-        addSpr('palcheok_spawn', t.x, t.y - 8, { dur: 0.8, s: 2, behind: true });
+        addSpr('palcheok_spawn', t.x, t.y - 8, { dur: 0.8, s: 4, behind: true });
         addSpr('palcheok_sfx', t.x, t.y - 34, { dur: 0.45, s: 2, flip: u.face < 0 });
         foes.filter(v => cheb(v, t) <= 1).forEach(v => {
           v.bind = Math.max(v.bind, 3);
@@ -1218,7 +1287,7 @@
         S.fx.push({ type: 'reticle', u: v, t: 0, dur: 0.6, color: C.sel });
         S.dim = { t: 0.45, a: 0.3, keep: [u, v] };
         addSpr('maiden_sfx', u.x + u.face * 10, u.y - 40, { dur: 0.35, s: 2, grow: true });
-        S.projectiles.push({ crescent: true, x: u.x, y: u.y - 30, target: v, src: u, dmg: u.atk * 3, frame: 'maiden_sfx2', speed: 600, face: v.x >= u.x ? 1 : -1 });
+        S.projectiles.push({ crescent: true, x: u.x, y: u.y - 30, target: v, src: u, dmg: u.atk * 3, frame: 'maiden_proj', speed: 600, face: v.x >= u.x ? 1 : -1 });
         Sound.play('wail');
         return true;
       }
@@ -1243,7 +1312,7 @@
 
   function execute(u, v) {
     S.dim = { t: 0.5, a: 0.5, keep: [u, v] };
-    addSpr('reaper_spawn', v.x, v.y - 6, { dur: 0.7, s: 1, behind: true });
+    addSpr('reaper_spawn', v.x, v.y - 6, { dur: 0.7, s: 2, behind: true });
     addSpr('reaper_sfx', v.x, v.y - 26, { dur: 0.4, s: 2, flip: v.x < u.x });
     S.fx.push({ type: 'slam', name: 'fx_exec0', x: v.x, y: v.y - 30, t: 0, dur: 0.5 });
     number('EXECUTE!', v, 'exec');
@@ -1287,9 +1356,11 @@
       u.castT -= dt;
       if (u.castT <= 0) {
         if (u.bind <= 0 && castSkill(u)) u.mp = 0;
+        else { u.castRetry = 0.4; u.anim = 'idle'; u.castHold = 0; }
       }
       return;
     }
+    if (u.castRetry > 0) u.castRetry -= dt;
 
     if (u.atkCd > 0) u.atkCd -= dt;
     u.retarget -= dt;
@@ -1300,7 +1371,7 @@
     const t = u.target;
     if (!t) return;
 
-    if (u.maxMp && u.mp >= u.maxMp && u.bind <= 0) {
+    if (u.maxMp && u.mp >= u.maxMp && u.bind <= 0 && !(u.castRetry > 0) && skillReady(u, t)) {
       u.castT = J.castTime;
       u.castSkillName = u.def.skill;
       u.anim = 'cast'; u.animT = 0; u.castHold = J.castTime;
@@ -1332,7 +1403,7 @@
           if (Math.hypot(v.x - p.x, v.y - 26 - p.y) < 30) {
             p.hit.add(v);
             addSpr('fx_hit0', v.x, v.y - 26, { dur: 0.25, s: 2 });
-            addSpr('gumiho_spawn', v.x, v.y - 6, { dur: 0.4, s: 1 });
+            addSpr('gumiho_spawn', v.x, v.y - 6, { dur: 0.4, s: 2 });
             v.freeze = Math.max(v.freeze, 0.05);
             dealDamage(p.src, v, p.dmg, { kind: 'skill' });
             if (p.first) { Juice.stop(0.05, 0.25); p.first = false; }
@@ -1364,7 +1435,7 @@
       if (d <= stepLen + 6) {
         S.projectiles.splice(i, 1);
         if (p.crescent) {
-          addSpr('maiden_spawn', t.x, t.y - 6, { dur: 0.5, s: 1, behind: true });
+          addSpr('maiden_spawn', t.x, t.y - 6, { dur: 0.5, s: 2, behind: true });
           addSpr('fx_debuff1', t.x, t.y - 30, { dur: 0.5, s: 2 });
           t.curse = 4;
           dealDamage(p.src, t, p.dmg, { kind: 'skill' });
@@ -1485,13 +1556,13 @@
     const away = src ? (u.x >= src.x ? 1 : -1) : (Math.random() < 0.5 ? -1 : 1);
     const f = { str, x: u.x + rand(-4, 4), y, t: 0, vx: 0, vy: 0, g: 0, scale: 1, pop: 0, dur: 0.6 };
     switch (kind) {
-      case 'normal': Object.assign(f, { st: NUM.normal, vx: away * 25, vy: -90, g: 260, pop: 0.05 }); break;
-      case 'hurt': Object.assign(f, { st: NUM.hurt, vx: away * 25, vy: -90, g: 260, pop: 0.05 }); break;
+      case 'normal': Object.assign(f, { st: NUM.normal, scale: 2, vx: away * 25, vy: -90, g: 260, pop: 0.05 }); break;
+      case 'hurt': Object.assign(f, { st: NUM.hurt, scale: 2, vx: away * 25, vy: -90, g: 260, pop: 0.05 }); break;
       case 'skill': Object.assign(f, { st: NUM.skill, scale: 2, vy: -70, g: 60, pop: 0.066, dur: 0.8 }); break;
-      case 'crit': Object.assign(f, { st: NUM.crit, scale: 2, vy: -120, g: 260, pop: 0.083, dur: 0.9, crit: true, vx: away * 20 }); break;
-      case 'heal': Object.assign(f, { st: NUM.heal, vy: -40, dur: 0.7 }); break;
+      case 'crit': Object.assign(f, { st: NUM.crit, scale: 3, vy: -120, g: 260, pop: 0.083, dur: 0.9, crit: true, vx: away * 20 }); break;
+      case 'heal': Object.assign(f, { st: NUM.heal, scale: 2, vy: -40, dur: 0.7 }); break;
       case 'dot': Object.assign(f, { st: NUM.dot, vy: -20, dur: 0.45 }); break;
-      case 'block': Object.assign(f, { st: NUM.block, vy: -60, g: 200, dur: 0.5 }); break;
+      case 'block': Object.assign(f, { st: NUM.block, scale: 2, vy: -60, g: 200, dur: 0.5 }); break;
       case 'exec': Object.assign(f, { st: NUM.exec, scale: 3, pop: 0.05, dur: 1.0, y: u.y - 76 }); break;
     }
     S.floats.push(f);
@@ -1509,7 +1580,7 @@
     for (let i = 0; i < n; i++) {
       if (S.particles.length > 300) break;
       const a = Math.random() * Math.PI * 2, s = rand(spd * 0.3, spd);
-      S.particles.push({ x, y, vx: Math.cos(a) * s, vy: Math.sin(a) * s - 30, life: rand(0.3, 0.7), max: 0.7, color, size: Math.random() < 0.5 ? 2 : 3, g: 160 });
+      S.particles.push({ x, y, vx: Math.cos(a) * s, vy: Math.sin(a) * s - 30, life: rand(0.3, 0.7), max: 0.7, color, size: Math.random() < 0.7 ? 2 : 4, g: 160 });
     }
   }
   function shards(x, y, color, n) {
@@ -1550,7 +1621,7 @@
       const was = u.spawnT;
       u.spawnT += rdt;
       if (was < 0 && u.spawnT >= 0 && S.scene === 'battle') {
-        if (u.team === 'P' && !u.mon) addSpr(u.def.id + '_spawn', u.x, u.y - 8, { dur: 0.5, s: 1, behind: true, grow: true });
+        if (u.team === 'P' && !u.mon) addSpr(u.def.id + '_spawn', u.x, u.y - 8, { dur: 0.5, s: 2, behind: true, grow: true });
         else addSpr('fx_spawn1', u.x, u.y - 24, { dur: 0.45, s: 2, grow: true });
         squash(u, 1.25, 0.8, 0.08);
         Sound.play('spawn');
@@ -1566,12 +1637,11 @@
   function unitFrame(u) {
     if (u.mon) return 'en_' + u.skin;
     const id = u.def.id;
-    if (!u.alive) return id + '_dead';
-    if (u.stun > 0) return id + '_hit';
+    if (!u.alive || u.stun > 0) return id + '_idle0';
     switch (u.anim) {
       case 'cast': return id + '_cast';
       case 'atk': return u.atkPhase === -1 ? id + '_atk0' : id + '_atk1';
-      case 'hit': return id + '_hit';
+      case 'hit': return id + '_idle1';
       case 'walk': return id + (Math.floor(u.animT / 0.11) % 2 ? '_walk1' : '_walk0');
       default: return id + (Math.floor((u.animT + u.bob) / (u.boss ? 0.44 : 0.36)) % 2 ? '_idle1' : '_idle0');
     }
@@ -1993,7 +2063,7 @@
       ctx.fillStyle = hot && afford ? '#12283a' : C.cell; ctx.fillRect(x + 1, y + 1, CARD_W - 2, CARD_H - 2);
       ctx.strokeStyle = merge && Math.floor(S.time * 4) % 2 === 0 ? C.gold : C.grid; ctx.lineWidth = 1; ctx.strokeRect(x + 1.5, y + 1.5, CARD_W - 3, CARD_H - 3);
       ctx.fillStyle = COST_COLOR[d.cost]; ctx.fillRect(x + 2, y + 2, CARD_W - 4, 3);
-      spr(id + '_port', x + CARD_W / 2, y + 56, 1, { a: afford ? 1 : 0.35 });
+      spr(id + (hot ? '_idle1' : '_idle0'), x + CARD_W / 2, y + 60, 2, { a: afford ? 1 : 0.35 });
       text(d.name.length > 13 ? d.name.slice(0, 13) : d.name, x + CARD_W / 2, y + 62, '#fff', 1, 'center');
       text(d.origin === 'W' ? 'WESTERN' : 'EASTERN', x + CARD_W / 2, y + 72, d.origin === 'W' ? C.west : C.east, 1, 'center');
       costLabel(d.cost, afford)(x + CARD_W / 2, y + 82);
@@ -2169,9 +2239,9 @@
     ctx.globalAlpha = 1;
     for (const p of S.projectiles) {
       const flip = p.pierce ? p.vx < 0 : p.face < 0;
-      if (p.pierce) spr(p.frame, p.x, p.y, 2, { flip });
+      if (p.pierce) spr(p.frame, p.x, p.y, 3, { flip });
       else if (p.heart) spr(p.frame, p.x, p.y, 2);
-      else spr(p.frame, p.x, p.y, p.crescent ? 2 : 1, { flip });
+      else spr(p.frame, p.x, p.y, p.crescent ? 3 : 2, { flip });
     }
   }
 
@@ -2184,7 +2254,7 @@
       let x = f.x;
       if (f.crit && f.t < 0.067) x += Math.random() < 0.5 ? -1 : 1;
       textStyled(f.str, x, f.y, f.st, f.scale, 'center', pop);
-      if (f.crit) textStyled('CRIT!', x, f.y - 18, NUM.banner, 1, 'center');
+      if (f.crit) textStyled('CRIT!', x, f.y - 24, NUM.banner, 1, 'center');
     }
     ctx.globalAlpha = 1;
   }
@@ -2356,7 +2426,7 @@
     GHOSTS.forEach((g, i) => {
       const x = 40 + i * 62, y = 186 + Math.round(Math.sin(S.time * 4 + i * 0.7) * 3);
       const pop = S.titlePop && S.titlePop.i === i ? clamp(1 - S.titlePop.t / 0.12, 0, 1) : 0;
-      spr(g.id + '_port', x, y, 1, { sx: 1 + 0.15 * pop, sy: 1 - 0.15 * pop });
+      spr(g.id + (Math.floor(S.time * 2.5 + i) % 2 ? '_idle1' : '_idle0'), x, y, 2, { sx: 1 + 0.15 * pop, sy: 1 - 0.15 * pop });
       text(g.name.split(/[ -]/)[0].slice(0, 9), x, 192, g.origin === 'W' ? C.west : C.east, 1, 'center');
     });
     text('WESTERN LEGENDS', 164, 104, C.west, 1, 'center');
@@ -2394,7 +2464,7 @@
       if (Math.random() < 0.3 && t < 3.1) S.fx.push({ type: 'star', x: rand(160, 480), y: 230, vx: rand(-80, 80), vy: rand(-160, -60), t: 0, dur: 0.9 });
     }
     drawFxLayer(false);
-    if (t > 1.8 && !S.modal && f.qualifies !== null && Math.floor(S.time * 2) % 2 === 0) text('TAP TO CONTINUE', W / 2, 300, C.gold, 2, 'center');
+    if (t > 1.8 && !S.modal && (f.qualifies !== null || t > 6) && Math.floor(S.time * 2) % 2 === 0) text('TAP TO CONTINUE', W / 2, 300, C.gold, 2, 'center');
   }
 
   function drawWipe() {
@@ -2507,7 +2577,7 @@
       if (S.titlePop.next <= 0) {
         const i = Math.floor(Math.random() * GHOSTS.length);
         S.titlePop = { i, t: 0, next: 2.5 };
-        addSpr(GHOSTS[i].id + '_spawn', 40 + i * 62, 180, { dur: 0.5, s: 1, grow: true });
+        addSpr(GHOSTS[i].id + '_spawn', 40 + i * 62, 180, { dur: 0.5, s: 2, grow: true });
       }
       if (S.titleCrow) {
         if (S.titleCrow.fly >= 0) { S.titleCrow.fly += rdt; if (S.titleCrow.fly > 2.2) { S.titleCrow.fly = -1; S.titleCrow.next = rand(8, 14); } }
@@ -2628,7 +2698,7 @@
         return;
 
       case 'prep': {
-        if (S.sel && S.sel.kind === 'roster' && inRect(p, BTN_SELL, 2)) { sell(S.sel.u); return; }
+        if (S.sel && S.sel.kind === 'roster' && inRect(p, BTN_SELL, 6)) { sell(S.sel.u); return; }
         if (inRect(p, BTN_REROLL, 2)) { reroll(); return; }
         if (inRect(p, BTN_ALTAR, 2)) { altar(); return; }
         if (inRect(p, BTN_FIGHT, 2)) { startBattle(); return; }
@@ -2685,29 +2755,41 @@
     S.drag = null;
     if (!d || S.scene !== 'prep') return;
     if (d.active) dropAt(d.u, p, feetOf(p));
-    else if (S.sel && S.sel.u === d.u) S.sel = null;
     else { S.sel = { kind: 'roster', u: d.u }; Sound.play('select'); }
   }
 
+  // one finger drives the pointer: a second finger can't hijack (or drop) a drag in progress
+  let touchId = null;
+  const findTouch = (list, id) => { for (let i = 0; i < list.length; i++) if (list[i].identifier === id) return list[i]; return null; };
   canvas.addEventListener('touchstart', e => {
     e.preventDefault();
-    S.touch = true;
+    if (touchId !== null && findTouch(e.touches, touchId)) return;   // still tracking a live finger
     const t = e.changedTouches[0];
+    touchId = t.identifier;
+    S.touch = true;
     onDown(toCanvas(t.clientX, t.clientY));
   }, { passive: false });
   canvas.addEventListener('touchmove', e => {
     e.preventDefault();
-    const t = e.changedTouches[0];
-    onMove(toCanvas(t.clientX, t.clientY));
+    const t = findTouch(e.changedTouches, touchId);
+    if (t) onMove(toCanvas(t.clientX, t.clientY));
   }, { passive: false });
   canvas.addEventListener('touchend', e => {
     e.preventDefault();
-    const t = e.changedTouches[0];
+    const t = findTouch(e.changedTouches, touchId);
+    if (!t) return;
+    touchId = null;
     onUp(toCanvas(t.clientX, t.clientY));
     S.mouse = { x: -1, y: -1 };
     S.hover = null;
   }, { passive: false });
-  canvas.addEventListener('touchcancel', () => { S.drag = null; }, { passive: true });
+  canvas.addEventListener('touchcancel', e => {
+    if (!findTouch(e.changedTouches, touchId)) return;
+    touchId = null;
+    S.drag = null;
+    S.mouse = { x: -1, y: -1 };
+    S.hover = null;
+  }, { passive: true });
 
   canvas.addEventListener('mousedown', e => { if (e.button === 0) { S.touch = false; onDown(toCanvas(e.clientX, e.clientY)); } });
   window.addEventListener('mousemove', e => onMove(toCanvas(e.clientX, e.clientY)));
@@ -2817,8 +2899,11 @@
           err.textContent = 'INVALID INITIALS (A-Z ONLY)'; busy = false; submitBtn.disabled = false; Sound.play('error'); return;
         }
         const rank = LocalRank.add(initial, level);
-        const why = e.message === 'OFFLINE' || e.message === 'DB_UNAVAILABLE' || e.message === 'BAD_RESPONSE' || /^HTTP_|fetch/i.test(e.message)
-          ? 'SERVER OFFLINE - SAVED LOCALLY' : 'NOT ACCEPTED (' + e.message + ') - SAVED LOCALLY';
+        // server error codes are UPPER_SNAKE; anything else (timeout, network, HTTP_5xx) = offline
+        const code = /^[A-Z_]+$/.test(e.message) ? e.message : 'OFFLINE';
+        const why = code === 'OFFLINE' || code === 'DB_UNAVAILABLE' || code === 'BAD_RESPONSE' ? 'SERVER OFFLINE - SAVED LOCALLY'
+          : code === 'LEVEL_NOT_VERIFIED' ? 'RUN NOT VERIFIED - SAVED LOCALLY'
+          : 'NOT ACCEPTED (' + code + ') - SAVED LOCALLY';
         showRanking(LocalRank.list(), -1, why + (rank ? ' (#' + rank + ')' : ''), done, rank);
       }
     }
