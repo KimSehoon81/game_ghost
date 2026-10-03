@@ -1,0 +1,18 @@
+# Ghost-Tactics :: Apache hardening (optional - safe to delete if AllowOverride is off)
+DirectoryIndex index.php
+Options -Indexes
+
+# Never serve the schema, docs or dotfiles.
+<FilesMatch "(\.(sql|md|log)|^\..*)$">
+    <IfModule mod_authz_core.c>
+        Require all denied
+    </IfModule>
+    <IfModule !mod_authz_core.c>
+        Order allow,deny
+        Deny from all
+    </IfModule>
+</FilesMatch>
+
+<IfModule mod_mime.c>
+    AddType application/javascript .js
+</IfModule>
