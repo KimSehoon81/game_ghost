@@ -44,13 +44,35 @@ $v = static function (string $f): string {
     font-family: "Courier New", Courier, monospace;
   }
 
-  /* 4:3 retro stage. PC: fixed 640x480. */
+  /* Layout: ad bar on top (10% of the screen height), the game fills the rest. */
+  :root { --ad-h: clamp(50px, 10vh, 120px); --gap: 6px; }
+  @supports (height: 100dvh) { :root { --ad-h: clamp(50px, 10dvh, 120px); } }
+  body { display: flex; flex-direction: column; }
+
+  #top-ad-bar {
+    flex: 0 0 var(--ad-h); height: var(--ad-h); width: 100%;
+    overflow: hidden; background: var(--bg);
+    display: flex; align-items: center; justify-content: center;
+  }
+  #top-ad-bar ins { width: 100%; height: 100%; }
+
+  #game-area { flex: 1 1 auto; position: relative; min-height: 0; margin-top: var(--gap); }
+
+  /* 4:3 retro stage. PC: fixed 640x480 whenever it fits; smaller windows scale it down. */
   #stage {
     position: absolute; left: 50%; top: 50%;
     width: 640px; height: 480px;
+    width: min(640px, 100vw, calc((100vh - var(--ad-h) - var(--gap)) * 4 / 3));
+    height: min(480px, 75vw, calc(100vh - var(--ad-h) - var(--gap)));
     transform: translate(-50%, -50%);
     background: #000;
     box-shadow: 0 0 0 3px #1c3448, 0 0 40px rgba(106, 156, 196, .22);
+  }
+  @supports (height: 100dvh) {
+    #stage {
+      width: min(640px, 100vw, calc((100dvh - var(--ad-h) - var(--gap)) * 4 / 3));
+      height: min(480px, 75vw, calc(100dvh - var(--ad-h) - var(--gap)));
+    }
   }
   #screen {
     display: block; width: 100%; height: 100%;
@@ -59,15 +81,18 @@ $v = static function (string $f): string {
     cursor: pointer;
   }
 
-  /* Mobile / windows smaller than the stage: full-viewport scaling, keep 4:3. */
-  @media (max-width: 639px), (max-height: 479px), (pointer: coarse) {
+  /* Phones / tablets: no 640px cap, use all the space below the ad (4:3 kept). */
+  @media (pointer: coarse) {
     #stage {
-      width: 100vw; height: 75vw;
-      max-height: 100vh; max-width: 133.333vh;
+      width: min(100vw, calc((100vh - var(--ad-h) - var(--gap)) * 4 / 3));
+      height: min(75vw, calc(100vh - var(--ad-h) - var(--gap)));
       box-shadow: none;
     }
     @supports (height: 100dvh) {
-      #stage { max-height: 100dvh; max-width: 133.333dvh; }
+      #stage {
+        width: min(100vw, calc((100dvh - var(--ad-h) - var(--gap)) * 4 / 3));
+        height: min(75vw, calc(100dvh - var(--ad-h) - var(--gap)));
+      }
     }
   }
 
@@ -145,10 +170,22 @@ $v = static function (string $f): string {
   @media (orientation: landscape), (min-width: 701px) { #rotateHint { display: none; } }
   noscript { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; }
 </style>
+<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-4148146820367094" crossorigin="anonymous"></script>
 </head>
 <body>
-<div id="stage">
-  <canvas id="screen" width="640" height="480" aria-label="Ghost-Tactics game screen"></canvas>
+<!-- ── 상단 분리형 광고 프레임 (게임과 독립, 전체 높이의 10%) ── -->
+<div id="top-ad-bar" aria-label="광고">
+  <ins class="adsbygoogle"
+       style="display:block;width:100%;height:100%"
+       data-ad-client="ca-pub-4148146820367094"
+       data-ad-slot="6398772441"
+       data-ad-format="horizontal"
+       data-full-width-responsive="true"></ins>
+</div>
+<div id="game-area">
+  <div id="stage">
+    <canvas id="screen" width="640" height="480" aria-label="Ghost-Tactics game screen"></canvas>
+  </div>
 </div>
 <div id="rotateHint">ROTATE YOUR DEVICE FOR A BIGGER SCREEN</div>
 
@@ -184,6 +221,7 @@ $v = static function (string $f): string {
 
 <noscript>Ghost-Tactics needs JavaScript enabled.</noscript>
 
+<script>try { (window.adsbygoogle = window.adsbygoogle || []).push({}); } catch (e) { /* ad blocked */ }</script>
 <script>window.GT_ASSET_VER = <?= json_encode($assetVer) ?>;</script>
 <script src="<?= htmlspecialchars($v('sprites.js'), ENT_QUOTES, 'UTF-8') ?>"></script>
 <script src="<?= htmlspecialchars($v('sound.js'), ENT_QUOTES, 'UTF-8') ?>"></script>
