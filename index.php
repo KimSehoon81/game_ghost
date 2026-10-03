@@ -7,6 +7,7 @@ header('Content-Type: text/html; charset=utf-8');
 header('X-Content-Type-Options: nosniff');
 
 // Cache-busting query strings so redeploys are picked up immediately.
+$assetVer = (string) (@filemtime(__DIR__ . '/sprites.png') ?: '1');
 $v = static function (string $f): string {
     $t = @filemtime(__DIR__ . '/' . $f);
     return $f . '?v=' . ($t ?: '1');
@@ -17,18 +18,19 @@ $v = static function (string $f): string {
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <meta name="csrf-token" content="<?= htmlspecialchars($csrf, ENT_QUOTES, 'UTF-8') ?>">
-<meta name="theme-color" content="#0b0716">
+<meta name="theme-color" content="#050d14">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <title>Ghost-Tactics</title>
+<link rel="preload" as="image" href="sprites.webp?v=<?= htmlspecialchars($assetVer, ENT_QUOTES, 'UTF-8') ?>" type="image/webp">
 <style>
   :root {
-    --bg: #0b0716;
-    --ink: #f8f8f8;
-    --accent: #f8d838;
-    --hot: #e03030;
-    --panel: #1c1430;
-    --line: #7fd8ff;
+    --bg: #050d14;
+    --ink: #f0f4f8;
+    --accent: #f8c838;
+    --hot: #e83a3a;
+    --panel: #0c1a26;
+    --line: #6a9cc4;
   }
   * { box-sizing: border-box; }
   html, body {
@@ -48,7 +50,7 @@ $v = static function (string $f): string {
     width: 640px; height: 480px;
     transform: translate(-50%, -50%);
     background: #000;
-    box-shadow: 0 0 0 4px #2a1f44, 0 0 40px rgba(127, 216, 255, .18);
+    box-shadow: 0 0 0 3px #1c3448, 0 0 40px rgba(106, 156, 196, .22);
   }
   #screen {
     display: block; width: 100%; height: 100%;
@@ -73,14 +75,14 @@ $v = static function (string $f): string {
   #overlay {
     position: fixed; inset: 0; z-index: 10;
     display: flex; align-items: center; justify-content: center;
-    background: rgba(5, 2, 12, .78);
+    background: rgba(2, 6, 10, .8);
   }
   .hidden { display: none !important; }
   .modal {
     width: min(92vw, 440px);
     max-height: 94vh; overflow: auto;
     background: var(--panel);
-    border: 4px solid var(--line);
+    border: 3px solid var(--line);
     box-shadow: 0 0 0 4px #000, 8px 8px 0 4px rgba(0, 0, 0, .6);
     padding: 16px 14px; text-align: center;
     image-rendering: pixelated;
@@ -97,8 +99,8 @@ $v = static function (string $f): string {
   .slot { display: flex; flex-direction: column; align-items: center; gap: 4px; }
   .slot button {
     width: 56px; height: 40px; font-size: 20px; line-height: 1;
-    background: #2a1f44; color: var(--ink);
-    border: 3px solid #000; box-shadow: inset -3px -3px 0 #120c20;
+    background: #16304a; color: var(--ink);
+    border: 3px solid #000; box-shadow: inset -3px -3px 0 #0a1824;
     cursor: pointer; touch-action: manipulation;
   }
   .slot button:active { transform: translateY(2px); box-shadow: none; }
@@ -129,11 +131,11 @@ $v = static function (string $f): string {
 
   table.rank { width: 100%; border-collapse: collapse; margin: 8px 0; font-weight: bold; }
   table.rank th { color: var(--line); border-bottom: 3px solid var(--line); padding: 4px; font-size: 14px; }
-  table.rank td { padding: 5px 4px; font-size: 16px; border-bottom: 1px dashed #3a2e58; }
+  table.rank td { padding: 5px 4px; font-size: 16px; border-bottom: 1px dashed #24405a; }
   table.rank tr:nth-child(1) td { color: #f8d838; }
   table.rank tr:nth-child(2) td { color: #d8d8e8; }
   table.rank tr:nth-child(3) td { color: #f0a050; }
-  table.rank tr.me td { background: #3a1030; animation: blink 0.6s steps(2) infinite; }
+  table.rank tr.me td { background: #3a1420; animation: blink 0.6s steps(2) infinite; }
   #rankStatus { font-size: 12px; opacity: .8; min-height: 16px; }
 
   #rotateHint {
@@ -182,6 +184,8 @@ $v = static function (string $f): string {
 
 <noscript>Ghost-Tactics needs JavaScript enabled.</noscript>
 
+<script>window.GT_ASSET_VER = <?= json_encode($assetVer) ?>;</script>
+<script src="<?= htmlspecialchars($v('sprites.js'), ENT_QUOTES, 'UTF-8') ?>"></script>
 <script src="<?= htmlspecialchars($v('sound.js'), ENT_QUOTES, 'UTF-8') ?>"></script>
 <script src="<?= htmlspecialchars($v('game.js'), ENT_QUOTES, 'UTF-8') ?>"></script>
 </body>
